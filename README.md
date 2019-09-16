@@ -26,7 +26,7 @@ Here you can find more information about [DevOps](https://aws.amazon.com/devops/
 
 You should have some basic experience with:
   - Train/test a ML model
-  - Python ([scikit-learn](https://scikit-learn.org/stable/#))
+  - [R Language](https://www.r-project.org))
   - [Jupyter Notebook](https://jupyter.org/)
   - [AWS CodePipeline](https://aws.amazon.com/codepipeline/)
   - [AWS CodeCommit](https://aws.amazon.com/codecommit/)
@@ -47,7 +47,7 @@ In order to complete this workshop you'll need an AWS Account with access to the
 In this workshop you'll implement and experiment a basic MLOps process, supported by an automated infrastructure for training/testing/deploying/integrating ML Models. It is comprised into four parts:
 
 1. You'll start with a **WarmUp**, for reviewing the basic features of Amazon Sagemaker;
-2. Then you will create a **basic Docker Image** for supporting any scikit-learn model;
+2. Then you will create a **basic Docker Image** for supporting any r model;
 3. Then you will create a **dispatcher Docker Image** that supports two different algorithms;
 4. Finally you will train the models, deploy them into a **DEV** environment, approve and deploy them into a **PRD** environment with **High Availability** and **Elasticity**;
 
@@ -55,11 +55,11 @@ Parts 2, 3 and 4 are supported by automated pipelines that reads the assets prod
 
 
 ### Architecture
-For parts 2 and 3 the following architecture will support the process. In part 2 you'll create an Abstract ScikitLearn Docker Image. In part 3 you'll extend that Abscract image and create the final image using two distinct Scikit Learn algorithms.
+For parts 2 and 3 the following architecture will support the process. In part 2 you'll create an Abstract R Docker Image. In part 3 you'll extend that Abscract image and create the final image using two distinct R algorithms.
 
 ![Build Docker Image](imgs/MLOps_BuildImage.jpg)
 
-1. The **ML Developer** creates the assets for Docker Image based on Scikit Learn, using Sagemaker, and pushes all the assets to a Git Repo (CodeCommit);
+1. The **ML Developer** creates the assets for Docker Image based on R, using Sagemaker, and pushes all the assets to a Git Repo (CodeCommit);
 2. CodePipeline listens the push event of CodeCommit, gets the source code and launches CodeBuild;
 3. CodeBuild authenticates into ECR, build the Docker Image and pushes it into the ECR repository
 4. Done.
@@ -131,7 +131,7 @@ In order to delete all the assets, created by this workshop, delete the followin
 
 Just follow the reverse order
 1. AIWorkshop
-2. scikit-base
+2. r-base
 3. iris-model
 4. iris-train-pipeline
 5. iris-train-pipeline-deploy-dev
