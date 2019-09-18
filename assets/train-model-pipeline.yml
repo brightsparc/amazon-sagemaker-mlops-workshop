@@ -15,6 +15,7 @@ Parameters:
   ModelName:
     Type: String
     Description: Name of the model
+    MaxLength: 10    
   DatasetKeyPath:
     Type: String
     Description: Path of the S3 bucket that CodePipeline should find a sagemaker jobfile
