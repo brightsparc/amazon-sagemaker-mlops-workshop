@@ -118,7 +118,7 @@ Resources:
             parameters="$parameters ParameterKey=DatasetKeyPath,ParameterValue=%s"
             aws cloudformation create-stack --stack-name sagemaker-rmars-train-pipeline \
               --template-body file://assets/train-model-pipeline.yml \
-              --parameters $(printf "$parameters" "rmars-model" "sagemaker-rmars-model" "latest" "sagemaker-rmars-model" "training_jobs/rmars-model" )
+              --parameters $(printf "$parameters" "rmars-model" "sagemaker-rmars-model" "latest" "rmars-model" "training_jobs/rmars-model" )
             
             echo "Done! Let's do some stuff with this env"
 
