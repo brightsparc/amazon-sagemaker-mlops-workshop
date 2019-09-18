@@ -1,5 +1,5 @@
-# aws cloudformation delete-stack --stack-name iris-model-pipeline
-# aws cloudformation create-stack --stack-name iris-model-pipeline --template-body file://build-model-pipeline.yml
+# aws cloudformation delete-stack --stack-name sagemaker-rmars-pipeline
+# aws cloudformation create-stack --stack-name sagemaker-rmars-pipeline --template-body file://build-model-pipeline.yml
 
 Description: Create a CodePipeline for a Machine Learning Model
 Parameters:

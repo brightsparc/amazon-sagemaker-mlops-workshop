@@ -1,5 +1,5 @@
-# aws cloudformation delete-stack --stack-name iris-model-prd
-# aws cloudformation create-stack --stack-name iris-model-prd --template-body file://deploy-model-prd.yml --parameters file://deploy-model-prd.json
+# aws cloudformation delete-stack --stack-name sagemaker-rmars-prd
+# aws cloudformation create-stack --stack-name sagemaker-rmars-prd --template-body file://deploy-model-prd.yml --parameters file://deploy-model-prd.json
 
 Description: Deploy a model at Sagemaker
 Parameters:
