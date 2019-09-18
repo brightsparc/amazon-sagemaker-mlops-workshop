@@ -15,7 +15,7 @@ Resources:
   MLOpsIrisModelRepo:
     Type: AWS::ECR::Repository
     Properties: 
-      RepositoryName: sagemaker-rmars
+      RepositoryName: sagemaker-rmars-model
 
   MLOpsBucket:
     Type: AWS::S3::Bucket
