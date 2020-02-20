@@ -1,6 +1,6 @@
 # aws cloudformation delete-stack --stack-name iris-model-prd
 # aws cloudformation create-stack --stack-name iris-model-prd --template-body file://deploy-model-prd.yml --parameters file://deploy-model-prd.json
-
+Transform: AWS::Serverless-2016-10-31
 Description: Deploy a model at Sagemaker
 Parameters:
   ImageRepoName:
@@ -17,6 +17,166 @@ Parameters:
     Description: Id of the Codepipeline + SagemakerJobs
 
 Resources:
+  DeploymentCompleteTopic:
+    Type: AWS::SNS::Topic
+        
+  ApiFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: !Sub mlops-${ModelName}-api
+      CodeUri: api/
+      Handler: app.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt ApiFunctionRole.Arn
+      AutoPublishAlias: "live"
+      DeploymentPreference:
+        Type: Canary10Percent5Minutes #AllAtOnce
+        Alarms:
+          # A list of alarms that you want to monitor
+          - !Ref AliasErrorMetricGreaterThanZeroAlarm
+          - !Ref LatestVersionErrorMetricGreaterThanZeroAlarm
+        Hooks:
+          # Validation Lambda functions that are run before & after traffic shifting
+          PreTraffic: !Ref PreTrafficLambdaFunction
+          PostTraffic: !Ref PostTrafficLambdaFunction
+        TriggerConfigurations:
+          - TriggerEvents:
+              - DeploymentSuccess
+              - DeploymentFailure
+            TriggerName: DeploymentCompleteTrigger
+            TriggerTargetArn: !Ref DeploymentCompleteTopic          
+      Environment:
+        Variables:
+          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      Events:
+        Invoke:
+          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Properties:
+            Path: /api
+            Method: post
+    DependsOn: Endpoint # Only deploy after the new endpoint is created
+
+  ApiFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'        
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:InvokeEndpoint
+                Resource: 
+                  "arn:aws:sagemaker:*:*:endpoint/*" 
+            Version: '2012-10-17'
+          PolicyName: SageMakerInvokeEndpoint
+  
+  PreTrafficLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'CodeDeployHook_${AWS::StackName}_PreTrafficLambdaFunction' # HACK 
+      CodeUri: api/
+      Handler: pre_traffic_hook.lambda_handler
+      Runtime: python3.7
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sagemaker:DescribeEndpoint
+                - sagemaker:InvokeEndpoint
+              Resource: 
+                "arn:aws:sagemaker:*:*:endpoint/*"
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource:
+                !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+      DeploymentPreference:
+        Enabled: False
+      Environment:
+        Variables:
+          FUNCTION_NAME: !Ref ApiFunction
+          FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
+          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+
+  PostTrafficLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'CodeDeployHook_${AWS::StackName}_PostTrafficLambdaFunction' # HACK 
+      CodeUri: api/
+      Handler: post_traffic_hook.lambda_handler
+      Runtime: python3.7
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: "Allow"
+              Action:
+                - lambda:GetFunction
+              Resource: 
+                !GetAtt ApiFunctionRole.Arn
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource:
+                !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+      DeploymentPreference:
+        Enabled: False
+      Environment:
+        Variables:
+          FUNCTION_NAME: !Ref ApiFunction
+          FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
+
+  AliasErrorMetricGreaterThanZeroAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmDescription: Lambda Function Error > 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Resource
+          Value: !Sub "${ApiFunction}:live"
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      EvaluationPeriods: 2
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Threshold: 0
+
+  LatestVersionErrorMetricGreaterThanZeroAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmDescription: Lambda Function Error > 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Resource
+          Value: !Sub "${ApiFunction}:live"
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+        - Name: ExecutedVersion
+          Value: !GetAtt ApiFunction.Version.Version
+      EvaluationPeriods: 2
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Threshold: 0
+            
   EndpointConfig:
     Type: "AWS::SageMaker::EndpointConfig"
     Properties:
