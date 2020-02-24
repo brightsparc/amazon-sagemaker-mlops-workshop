@@ -45,16 +45,16 @@ def lambda_handler(event, context):
         env_vars = response['Configuration']['Environment']['Variables']
         live_endpoint_name = env_vars['ENDPOINT_NAME']
 
-        # Log if this is already live
-        if function_version == live_version:
-            print('function {}:{} is already live'.format(function_name, function_version))
+        print('function {}:{} live:{}'.format(function_name, function_version, live_version))
 
-        # Delete the monitoring schedule aligned with old endpoint so endpoint 
-        # What permission is this?
-        response = sm.delete_monitoring_schedule(
-            MonitoringScheduleName=live_endpoint_name
-        )
-        print('monitoring delete_monitoring_schedule: {}'.format(live_endpoint_name), response)
+        # Log if this is already live
+        if function_version > live_version:
+            # Delete the monitoring schedule aligned with old endpoint so endpoint 
+            response = sm.delete_monitoring_schedule(
+                MonitoringScheduleName=live_endpoint_name
+            )
+            print('sagemaker delete_monitoring_schedule: {}'.format(live_endpoint_name), response)
+        # TODO: Create a new monitoring schedule for this endpoint
     except ClientError as e:
         print('error deleting monitoring schedule', e)
 
@@ -63,7 +63,7 @@ def lambda_handler(event, context):
         lifecycleEventHookExecutionId=event['LifecycleEventHookExecutionId'],
         status='Succeeded'
     )
-    print('put_lifecycle_succeeded', response)
+    print('codepipeline put_lifecycle_succeeded', response)
     return {
         "statusCode": 200
     }

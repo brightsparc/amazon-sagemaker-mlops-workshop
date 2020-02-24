@@ -97,7 +97,15 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
+                - s3:GetObject
+              Resource: 
+                !Sub mlops-${AWS::Region}-${AWS::AccountId}
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
                 - sagemaker:DescribeEndpoint
+                - sagemaker:DescribeTrainingJob
                 - sagemaker:InvokeEndpoint
               Resource: 
                 "arn:aws:sagemaker:*:*:endpoint/*"
@@ -115,6 +123,7 @@ Resources:
           FUNCTION_NAME: !Ref ApiFunction
           FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
           ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+          TRAINING_JOB_NAME: !Sub mlops-${ModelName}-${TrainJobId}
 
   PostTrafficLambdaFunction:
     Type: AWS::Serverless::Function
@@ -131,6 +140,13 @@ Resources:
                 - lambda:GetFunction
               Resource: 
                 !GetAtt ApiFunction.Arn
+        - Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Action:
+                - sagemaker:DeleteMonitoringSchedule
+              Resource:
+                "arn:aws:sagemaker:*:*:endpoint/*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
