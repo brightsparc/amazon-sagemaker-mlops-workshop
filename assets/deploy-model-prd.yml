@@ -24,7 +24,7 @@ Resources:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
       FunctionName: !Sub mlops-${ModelName}-api
-      CodeUri: api/
+      CodeUri: ../api
       Handler: app.lambda_handler
       Runtime: python3.7
       Role: !GetAtt ApiFunctionRole.Arn
@@ -84,8 +84,8 @@ Resources:
   PreTrafficLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'CodeDeployHook_${AWS::StackName}_PreTrafficLambdaFunction' # HACK 
-      CodeUri: api/
+      FunctionName: !Sub 'CodeDeployHook_mlops-${ModelName}-PreTrafficLambdaFunction'
+      CodeUri: ../api
       Handler: pre_traffic_hook.lambda_handler
       Runtime: python3.7
       Policies:
@@ -115,8 +115,8 @@ Resources:
   PostTrafficLambdaFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: !Sub 'CodeDeployHook_${AWS::StackName}_PostTrafficLambdaFunction' # HACK 
-      CodeUri: api/
+      FunctionName: !Sub 'CodeDeployHook_mlops-${ModelName}-PostTrafficLambdaFunction'
+      CodeUri: ../api
       Handler: post_traffic_hook.lambda_handler
       Runtime: python3.7
       Policies:
@@ -126,7 +126,7 @@ Resources:
               Action:
                 - lambda:GetFunction
               Resource: 
-                !GetAtt ApiFunctionRole.Arn
+                !GetAtt ApiFunction.Arn
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow

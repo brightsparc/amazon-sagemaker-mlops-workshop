@@ -289,7 +289,7 @@ Resources:
                 Version: 1
                 Provider: CloudFormation
               Configuration:
-                ActionMode: CREATE_UPDATE
+                ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
                 Capabilities: CAPABILITY_NAMED_IAM
                 StackName: !Sub ${AWS::StackName}-deploy-dev
@@ -326,9 +326,9 @@ Resources:
                 Provider: CloudFormation
                 
               Configuration:
-                ActionMode: CREATE_UPDATE
+                ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
-                Capabilities: CAPABILITY_NAMED_IAM
+                Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
                 TemplateConfiguration: ModelTrainOutput::assets/deploy-model.json
                 TemplatePath: ModelSourceOutput::assets/deploy-model-prd.yml
