@@ -99,7 +99,7 @@ Resources:
               Action:
                 - s3:GetObject
               Resource: 
-                !Sub mlops-${AWS::Region}-${AWS::AccountId}
+                "arn:aws:s3:::*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
