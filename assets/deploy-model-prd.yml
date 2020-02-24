@@ -108,7 +108,7 @@ Resources:
                 - sagemaker:DescribeTrainingJob
                 - sagemaker:InvokeEndpoint
               Resource: 
-                "arn:aws:sagemaker:*:*:endpoint/*"
+                arn:aws:sagemaker:*:*:*/*
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
@@ -146,7 +146,7 @@ Resources:
               Action:
                 - sagemaker:DeleteMonitoringSchedule
               Resource:
-                "arn:aws:sagemaker:*:*:endpoint/*"
+                "arn:aws:sagemaker:::*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow

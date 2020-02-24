@@ -46,19 +46,23 @@ def lambda_handler(event, context):
         status = response['EndpointStatus']
         if status != 'InService':
             error_message = 'Stagemaker endpoint status: {} not InService'.format(status)
+    except ClientError as e:
+        print('sagemaker error', e)
+        error_message = e.response['Error']['Message']
+
+    try:
         # Get validation location from training job
         response = sm.describe_training_job(TrainingJobName=training_job_name)
         print('sagemaker describe_training_job', response)
         val_uri = [r['DataSource']['S3DataSource']['S3Uri'] for r in
                     response['InputDataConfig'] if r['ChannelName'] == 'validation']
         if val_uri:
-            print('found validation: {}'.format(val_uri[0]))
+            print('validation location: {}'.format(val_uri[0]))
             # TODO: Download dataset
             # TODO: Invoke endpoint with validation set to get baseline dataset
             # TODO: Create baseline processing job from dataset
     except ClientError as e:
-        print('sagemaker error', e)
-        error_message = e.response['Error']['Message']
+        print('baseline error', e)
 
     try:
         if error_message:
