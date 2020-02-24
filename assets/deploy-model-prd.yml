@@ -15,6 +15,9 @@ Parameters:
   TrainJobId:
     Type: String
     Description: Id of the Codepipeline + SagemakerJobs
+  TrainSha256:
+    Type: String
+    Description: The Sha256 hash of the training job info
 
 Resources:
   DeploymentCompleteTopic:
@@ -29,6 +32,7 @@ Resources:
       Runtime: python3.7
       Role: !GetAtt ApiFunctionRole.Arn
       AutoPublishAlias: "live"
+      #AutoPublishCodeSha256: !Ref TrainSha256
       DeploymentPreference:
         Type: Canary10Percent5Minutes #AllAtOnce
         Alarms:

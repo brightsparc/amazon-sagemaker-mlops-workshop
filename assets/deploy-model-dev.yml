@@ -15,7 +15,10 @@ Parameters:
   TrainJobId:
     Type: String
     Description: Id of the Codepipeline + SagemakerJobs
-    
+  TrainSha256:
+    Type: String
+    Description: The Sha256 hash of the training job info
+
 Resources:
   Model:
     Type: "AWS::SageMaker::Model"
