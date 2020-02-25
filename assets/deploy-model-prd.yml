@@ -150,6 +150,13 @@ Resources:
                 - sagemaker:* # TODO: Tighten up this 
               Resource:
                 "arn:aws:sagemaker:*:*:*/*"
+            - Effect: Allow
+              Action:
+                - iam:PassRole # Allow passrole to sagemaker
+              Resource: "*"
+              Condition:
+                StringEquals:
+                  iam:PassedToService: sagemaker.amazonaws.com
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
@@ -165,8 +172,8 @@ Resources:
           FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
           ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
           BASELINE_RESULTS_URI: !Ref BaselineResultUri
-          BASELINE_RESULTS_URI: !Ref MonitoringReportsUri
-          BASELINE_RESULTS_URI: !Ref BaselineResultUri
+          MONITORING_REPORTS_URI: !Ref MonitoringReportsUri
+          MONITORING_ROLE_ARN: !Ref MonitoringRoleArn
 
   AliasErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"

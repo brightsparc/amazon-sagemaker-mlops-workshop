@@ -69,9 +69,7 @@ def enable_data_capture(endpoint_name, data_capture_uri):
     )
     print('sagemaker update_endpoint', response)
 
-    # Delete the old endpoint config
-    response = sm.delete_endpoint_config(EndpointConfigName=endpoint_config_name)
-    print('sagemaker delete_endpoint_config', response)
+    # Leave the old endpoint config to be cleaned up by cloud formation
     return new_config_name
 
 def lambda_handler(event, context):
