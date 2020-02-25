@@ -2,9 +2,23 @@ import boto3
 from botocore.exceptions import ClientError
 import json
 import os
+import random
+import time
 
 sm = boto3.client('sagemaker')
 cd = boto3.client('codedeploy')
+
+def unique_name_from_base(base, max_length=63):
+    """
+    Args:
+        base:
+        max_length:
+    """
+    unique = "%04x" % random.randrange(16 ** 4)  # 4-digit hex
+    ts = str(int(time.time()))
+    available_length = max_length - 2 - len(ts) - len(unique)
+    trimmed = base[:available_length]
+    return "{}-{}-{}".format(trimmed, ts, unique)
 
 def enable_data_capture(endpoint_name, data_capture_uri):
     # Get the endpoint validate in service
@@ -30,8 +44,8 @@ def enable_data_capture(endpoint_name, data_capture_uri):
         }
     }
 
-    # Get new config name replace 'ec' with 'dc' for datacapture
-    new_config_name = endpoint_config_name.replace('-ec-', '-dc-')
+    # Get new config name from endpoint_config
+    new_config_name = unique_name_from_base(endpoint_config_name)
 
     request = {
         "EndpointConfigName": new_config_name,
@@ -48,7 +62,7 @@ def enable_data_capture(endpoint_name, data_capture_uri):
     print('create endpoint config', request)
     response = sm.create_endpoint_config(**request)
     print('sagemaker create_endpoint_config', response)
-
+    
     # Update endpoint to point to new config
     response = sm.update_endpoint(
         EndpointName=endpoint_name, EndpointConfigName=new_config_name
@@ -135,5 +149,3 @@ def lambda_handler(event, context):
             "statusCode": 500,
             "message": e.response['Error']['Message']            
         }
-                
-

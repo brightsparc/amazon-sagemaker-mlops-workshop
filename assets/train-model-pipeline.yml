@@ -66,25 +66,32 @@ Resources:
                               training_hash = hashlib.sha256(bytes).hexdigest();
                               baseline = json.loads(z.read('baseline.json').decode('ascii'))
                   
-                  params_deploy = {
+                  params_dev = {
                       "Parameters": {
                           "ImageRepoName": "${ImageRepoName}",
                           "ImageTagName": "${ImageTagName}",
                           "ModelName": "${ModelName}",
                           "TrainJobId": executionId,
+                      }
+                  }
+
+                  params_prod = {
+                      "Parameters": dict(params_dev['Parameters'], **{
                           "TrainSha256": training_hash,
                           "DataCaptureUri": baseline['DataCaptureConfig']['DestinationS3Uri'],
                           "BaselineResultUri": baseline['BaselineResultUri'],
-                      }
+                          "MonitoringReportsUri": baseline['MonitoringReportsUri'],
+                          "MonitoringRoleArn": baseline['MonitoringRoleArn'],
+                      })
                   }
+
                   for outputArtifacts in event["CodePipeline.job"]["data"]["outputArtifacts"]:
                       if outputArtifacts['name'] == 'ModelTrainOutput':
                           s3Location = outputArtifacts['location']['s3Location']
-                          
                           zip_bytes = io.BytesIO()
                           with zipfile.ZipFile(zip_bytes, "w") as z:
-                              z.writestr('assets/deploy-model.json', json.dumps(params_deploy))
-                            
+                              z.writestr('assets/deploy-model-dev.json', json.dumps(params_dev))
+                              z.writestr('assets/deploy-model-prd.json', json.dumps(params_prod))
                           zip_bytes.seek(0)
                           s3.put_object(Bucket=s3Location['bucketName'], Key=s3Location['objectKey'], Body=zip_bytes.read())
               
@@ -300,7 +307,7 @@ Resources:
                 RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
                 Capabilities: CAPABILITY_NAMED_IAM
                 StackName: !Sub ${AWS::StackName}-deploy-dev
-                TemplateConfiguration: ModelTrainOutput::assets/deploy-model.json
+                TemplateConfiguration: ModelTrainOutput::assets/deploy-model-dev.json
                 TemplatePath: ModelSourceOutput::assets/deploy-model-dev.yml
               RunOrder: 1
         -
@@ -337,7 +344,7 @@ Resources:
                 RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
-                TemplateConfiguration: ModelTrainOutput::assets/deploy-model.json
+                TemplateConfiguration: ModelTrainOutput::assets/deploy-model-prd.json
                 TemplatePath: ModelSourceOutput::assets/deploy-model-prd.yml
               RunOrder: 1
     DependsOn:

@@ -24,6 +24,12 @@ Parameters:
   BaselineResultUri:
     Type: String
     Description: The s3 uri to baseline results for model monitoring
+  MonitoringReportsUri:
+    Type: String
+    Description: The s3 uri to for writing out monitoring reports
+  MonitoringRoleArn:
+    Type: String
+    Description: The role for executing the monitoring schedule
 
 Resources:
   DeploymentCompleteTopic:
@@ -103,11 +109,7 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - sagemaker:CreateEndpointConfig
-                - sagemaker:DescribeEndpoint
-                - sagemaker:DeleteEndpointConfig
-                - sagemaker:UpdateEndpoint
-                - sagemaker:UpdateEndpointConfig
+                - sagemaker:* # TODO: Tighten up this
               Resource: 
                 "arn:aws:sagemaker:*:*:*/*"
         - Version: "2012-10-17"
@@ -145,8 +147,7 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - sagemaker:CreateMonitoringSchedule
-                - sagemaker:DeleteMonitoringSchedule
+                - sagemaker:* # TODO: Tighten up this 
               Resource:
                 "arn:aws:sagemaker:*:*:*/*"
         - Version: "2012-10-17"
@@ -162,6 +163,9 @@ Resources:
         Variables:
           FUNCTION_NAME: !Ref ApiFunction
           FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
+          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+          BASELINE_RESULTS_URI: !Ref BaselineResultUri
+          BASELINE_RESULTS_URI: !Ref MonitoringReportsUri
           BASELINE_RESULTS_URI: !Ref BaselineResultUri
 
   AliasErrorMetricGreaterThanZeroAlarm:

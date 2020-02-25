@@ -15,15 +15,6 @@ Parameters:
   TrainJobId:
     Type: String
     Description: Id of the Codepipeline + SagemakerJobs
-  TrainSha256:
-    Type: String
-    Description: The Sha256 hash of the training job info
-  DataCaptureUri:
-    Type: String
-    Description: The s3 uri to upload data capture logs
-  BaselineResultUri:
-    Type: String
-    Description: The s3 uri to baseline results for model monitoring
 
 Resources:
   Model:
