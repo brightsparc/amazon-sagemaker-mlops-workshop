@@ -64,7 +64,7 @@ Resources:
                               bytes = z.read('trainingjob.json')
                               trainingJob = json.loads(bytes.decode('ascii'))
                               training_hash = hashlib.sha256(bytes).hexdigest();
-                              baseline = json.loads(z.read('baseline.json').decode('ascii'))
+                              monitoring = json.loads(z.read('monitoring.json').decode('ascii'))
                   
                   params_dev = {
                       "Parameters": {
@@ -78,10 +78,11 @@ Resources:
                   params_prod = {
                       "Parameters": dict(params_dev['Parameters'], **{
                           "TrainSha256": training_hash,
-                          "DataCaptureUri": baseline['DataCaptureConfig']['DestinationS3Uri'],
-                          "BaselineResultUri": baseline['BaselineResultUri'],
-                          "MonitoringReportsUri": baseline['MonitoringReportsUri'],
-                          "MonitoringRoleArn": baseline['MonitoringRoleArn'],
+                          "DataCaptureUri": monitoring['DataCaptureUri'],
+                          "BaselineConstraintsUri": monitoring['BaselineConstraintsUri'],
+                          "BaselineStatisticsUri": monitoring['BaselineStatisticsUri'],
+                          "ScheduleReportsUri": monitoring['ScheduleReportsUri'],
+                          "ScheduleRoleArn": monitoring['ScheduleRoleArn'],
                       })
                   }
 
@@ -163,7 +164,7 @@ Resources:
                       token = latestExecution['token']
 
               if token is None:
-                raise(Exception("Action token wasn't found. Aborting..."))
+                return "Action token wasn't found. Aborting..."
                   
               response = sagemaker.describe_training_job( 
                 TrainingJobName='mlops-${ModelName}-%s' % executionId )

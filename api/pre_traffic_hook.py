@@ -101,12 +101,9 @@ def lambda_handler(event, context):
     print('event', json.dumps(event))
 
     # Print the params
-    function_name = os.environ['FUNCTION_NAME']
-    function_version = os.environ['FUNCTION_VERSION']
     endpoint_name = os.environ['ENDPOINT_NAME']
     data_capture_uri = os.environ['DATA_CAPTURE_URI']
-    print('function: {}:{} endpoint: {} data capture: {}'.format(
-        function_name, function_version, endpoint_name, data_capture_uri))
+    print('endpoint: {} data capture: {}'.format(endpoint_name, data_capture_uri))
 
     error_message = None
     try:

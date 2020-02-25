@@ -21,13 +21,16 @@ Parameters:
   DataCaptureUri:
     Type: String
     Description: The s3 uri to upload data capture logs
-  BaselineResultUri:
+  BaselineConstraintsUri:
     Type: String
-    Description: The s3 uri to baseline results for model monitoring
-  MonitoringReportsUri:
+    Description: The s3 uri to for constraints
+  BaselineStatisticsUri:
     Type: String
-    Description: The s3 uri to for writing out monitoring reports
-  MonitoringRoleArn:
+    Description: The s3 uri for statistics
+  ScheduleReportsUri:
+    Type: String
+    Description: The s3 uri to schedule reports
+  ScheduleRoleArn:
     Type: String
     Description: The role for executing the monitoring schedule
 
@@ -35,6 +38,49 @@ Resources:
   DeploymentCompleteTopic:
     Type: AWS::SNS::Topic
         
+  CfnMonitoringScheduleFunction:
+    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Properties:
+      FunctionName: !Sub mlops-${ModelName}-cfn-monitoring-schedule
+      CodeUri: ../cfn
+      Handler: sagemaker_monitoring_schedule.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt SagemakerFunctionRole.Arn
+
+  CfnFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+        Version: '2012-10-17'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyDocument:
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:InvokeEndpoint
+                Resource: 
+                  "arn:aws:sagemaker:*:*:endpoint/*" 
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                 - iam:PassRole
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: sagemaker.amazonaws.com
+            Version: '2012-10-17'
+          PolicyName: SageMakerMonitoringSchedule
+
   ApiFunction:
     Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
@@ -54,7 +100,6 @@ Resources:
         Hooks:
           # Validation Lambda functions that are run before & after traffic shifting
           PreTraffic: !Ref PreTrafficLambdaFunction
-          PostTraffic: !Ref PostTrafficLambdaFunction
         TriggerConfigurations:
           - TriggerEvents:
               - DeploymentSuccess
@@ -109,7 +154,7 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - sagemaker:* # TODO: Tighten up this
+                - sagemaker:* # TODO: Tighten up this with DataCapture CFN
               Resource: 
                 "arn:aws:sagemaker:*:*:*/*"
         - Version: "2012-10-17"
@@ -123,57 +168,36 @@ Resources:
         Enabled: False
       Environment:
         Variables:
-          FUNCTION_NAME: !Ref ApiFunction
-          FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
           ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
-          DATA_CAPTURE_URI: !Ref DataCaptureUri
+          DATA_CAPTURE_URI: !Ref DataCaptureUri # TODO: Move to custom resource
 
-  PostTrafficLambdaFunction:
-    Type: AWS::Serverless::Function
+  SagemakerMonitoringSchedule:
+    Type: Custom::MonitoringSchedule
     Properties:
-      FunctionName: !Sub 'CodeDeployHook_mlops-${ModelName}-PostTrafficLambdaFunction'
-      CodeUri: ../api
-      Handler: post_traffic_hook.lambda_handler
-      Runtime: python3.7
-      Policies:
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: "Allow"
-              Action:
-                - lambda:GetFunction
-              Resource: 
-                !GetAtt ApiFunction.Arn
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - sagemaker:* # TODO: Tighten up this 
-              Resource:
-                "arn:aws:sagemaker:*:*:*/*"
-            - Effect: Allow
-              Action:
-                - iam:PassRole # Allow passrole to sagemaker
-              Resource: "*"
-              Condition:
-                StringEquals:
-                  iam:PassedToService: sagemaker.amazonaws.com
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
-                - codedeploy:PutLifecycleEventHookExecutionStatus
-              Resource:
-                !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
-      DeploymentPreference:
-        Enabled: False
-      Environment:
-        Variables:
-          FUNCTION_NAME: !Ref ApiFunction
-          FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
-          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
-          BASELINE_RESULTS_URI: !Ref BaselineResultUri
-          MONITORING_REPORTS_URI: !Ref MonitoringReportsUri
-          MONITORING_ROLE_ARN: !Ref MonitoringRoleArn
+      ServiceToken: !GetAtt CfnMonitoringScheduleFunction.Arn
+      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      ScheduleName: !Sub mlops-mon-${ModelName}-prd-${TrainJobId}
+      BaselineConstraintsUri: !Ref BaselineConstraintsUri
+      BaselineStatisticsUri: !Ref BaselineStatisticsUri
+      OutputS3URI: !Ref ScheduleReportsUri
+      PassRoleArn: !Ref ScheduleRoleArn
+
+  AliasErrorMetricGreaterThanZeroAlarm:
+    Type: "AWS::CloudWatch::Alarm"
+    Properties:
+      AlarmDescription: Lambda Function Error > 0
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: Resource
+          Value: !Sub "${ApiFunction}:live"
+        - Name: FunctionName
+          Value: !Ref ApiFunction
+      EvaluationPeriods: 2
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Period: 60
+      Statistic: Sum
+      Threshold: 0
 
   AliasErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"
