@@ -219,7 +219,7 @@ Resources:
         InitialVariantWeight: 1.0
         InstanceType: ml.c5.large
         ModelName: !Sub mlops-${ModelName}-${TrainJobId}
-        VariantName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+        VariantName: AllTraffic
       EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
       Tags:
         - Key: Name

@@ -17,8 +17,10 @@ Parameters:
     Description: Id of the Codepipeline + SagemakerJobs
 
 Resources:
+
   Model:
     Type: "AWS::SageMaker::Model"
+    DeletionPolicy: Retain
     Properties:
       ModelName: !Sub mlops-${ModelName}-${TrainJobId}
       PrimaryContainer:
@@ -34,8 +36,7 @@ Resources:
         InitialVariantWeight: 1.0
         InstanceType: ml.t2.large
         ModelName: !GetAtt Model.ModelName
-        VariantName: !GetAtt Model.ModelName
-          
+        VariantName: AllTraffic
       EndpointConfigName: !Sub mlops-ec-${ModelName}-dev-${TrainJobId}
       Tags:
         - Key: Name
