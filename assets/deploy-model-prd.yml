@@ -18,6 +18,12 @@ Parameters:
   TrainSha256:
     Type: String
     Description: The Sha256 hash of the training job info
+  DataCaptureUri:
+    Type: String
+    Description: The s3 uri to upload data capture logs
+  BaselineResultUri:
+    Type: String
+    Description: The s3 uri to baseline results for model monitoring
 
 Resources:
   DeploymentCompleteTopic:
@@ -97,18 +103,13 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - s3:GetObject
-              Resource: 
-                "arn:aws:s3:::*"
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
-              Action:
+                - sagemaker:CreateEndpointConfig
                 - sagemaker:DescribeEndpoint
-                - sagemaker:DescribeTrainingJob
-                - sagemaker:InvokeEndpoint
+                - sagemaker:DeleteEndpointConfig
+                - sagemaker:UpdateEndpoint
+                - sagemaker:UpdateEndpointConfig
               Resource: 
-                arn:aws:sagemaker:*:*:*/*
+                "arn:aws:sagemaker:*:*:*/*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
@@ -123,7 +124,7 @@ Resources:
           FUNCTION_NAME: !Ref ApiFunction
           FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
           ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
-          TRAINING_JOB_NAME: !Sub mlops-${ModelName}-${TrainJobId}
+          DATA_CAPTURE_URI: !Ref DataCaptureUri
 
   PostTrafficLambdaFunction:
     Type: AWS::Serverless::Function
@@ -144,9 +145,10 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
+                - sagemaker:CreateMonitoringSchedule
                 - sagemaker:DeleteMonitoringSchedule
               Resource:
-                "arn:aws:sagemaker:::*"
+                "arn:aws:sagemaker:*:*:*/*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
@@ -160,6 +162,7 @@ Resources:
         Variables:
           FUNCTION_NAME: !Ref ApiFunction
           FUNCTION_VERSION: !GetAtt ApiFunction.Version.Version
+          BASELINE_RESULTS_URI: !Ref BaselineResultUri
 
   AliasErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"

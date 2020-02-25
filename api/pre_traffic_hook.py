@@ -6,6 +6,60 @@ import os
 sm = boto3.client('sagemaker')
 cd = boto3.client('codedeploy')
 
+def enable_data_capture(endpoint_name, data_capture_uri):
+    # Get the endpoint validate in service
+    endpoint = sm.describe_endpoint(EndpointName=endpoint_name)
+    if endpoint['EndpointStatus'] != 'InService':
+        return None
+
+    # Get the current endpoint config
+    endpoint_config_name = endpoint['EndpointConfigName']
+    endpoint_config = sm.describe_endpoint_config(EndpointConfigName=endpoint_config_name)
+
+    # Get data capture config as dict
+    data_capture_config_dict = {
+        'EnableCapture': True,
+        'InitialSamplingPercentage': 100,
+        'DestinationS3Uri': data_capture_uri,
+        'CaptureOptions': [
+            {'CaptureMode': 'Input'}, {'CaptureMode': 'Output'}
+        ],
+        'CaptureContentTypeHeader': {
+            'CsvContentTypes': ['text/csv'],
+            'JsonContentTypes': ['application/json']
+        }
+    }
+
+    # Get new config name replace 'ec' with 'dc' for datacapture
+    new_config_name = endpoint_config_name.replace('-ec-', '-dc-')
+
+    request = {
+        "EndpointConfigName": new_config_name,
+        "ProductionVariants": endpoint_config["ProductionVariants"],
+        "DataCaptureConfig": data_capture_config_dict,
+        "Tags": [] # Don't copy aws:* tags from orignial
+    }
+
+    # Copy KmsKeyId if provided
+    if endpoint_config.get("KmsKeyId") is not None:
+        request["KmsKeyId"] = endpoint_config.get("KmsKeyId")
+
+    # Create the endpoint config
+    print('create endpoint config', request)
+    response = sm.create_endpoint_config(**request)
+    print('sagemaker create_endpoint_config', response)
+
+    # Update endpoint to point to new config
+    response = sm.update_endpoint(
+        EndpointName=endpoint_name, EndpointConfigName=new_config_name
+    )
+    print('sagemaker update_endpoint', response)
+
+    # Delete the old endpoint config
+    response = sm.delete_endpoint_config(EndpointConfigName=endpoint_config_name)
+    print('sagemaker delete_endpoint_config', response)
+    return new_config_name
+
 def lambda_handler(event, context):
     """Sample pure Lambda function
 
@@ -32,37 +86,25 @@ def lambda_handler(event, context):
     # See: https://awslabs.github.io/serverless-application-model/safe_lambda_deployments.html
 
     # Print the event
+    print('event', json.dumps(event))
+
+    # Print the params
     function_name = os.environ['FUNCTION_NAME']
     function_version = os.environ['FUNCTION_VERSION']
     endpoint_name = os.environ['ENDPOINT_NAME']
-    training_job_name = os.environ['TRAINING_JOB_NAME']
-    print('function: {}:{} endpoint: {} event: {}'.format(
-        function_name, function_version, endpoint_name, json.dumps(event)))
+    data_capture_uri = os.environ['DATA_CAPTURE_URI']
+    print('function: {}:{} endpoint: {} data capture: {}'.format(
+        function_name, function_version, endpoint_name, data_capture_uri))
 
     error_message = None
     try:
-        response = sm.describe_endpoint(EndpointName=endpoint_name)
-        print('sagemaker describe_endpoint', response)
-        status = response['EndpointStatus']
-        if status != 'InService':
-            error_message = 'Stagemaker endpoint status: {} not InService'.format(status)
+        # Update endpoint to enable data capture
+        endpoint_config_name = enable_data_capture(endpoint_name, data_capture_uri)
+        if endpoint_config_name == None:
+            error_message = 'Stagemaker endpoint: {} not InService'.format(endpoint_name)
     except ClientError as e:
         print('sagemaker error', e)
         error_message = e.response['Error']['Message']
-
-    try:
-        # Get validation location from training job
-        response = sm.describe_training_job(TrainingJobName=training_job_name)
-        print('sagemaker describe_training_job', response)
-        val_uri = [r['DataSource']['S3DataSource']['S3Uri'] for r in
-                    response['InputDataConfig'] if r['ChannelName'] == 'validation']
-        if val_uri:
-            print('validation location: {}'.format(val_uri[0]))
-            # TODO: Download dataset
-            # TODO: Invoke endpoint with validation set to get baseline dataset
-            # TODO: Create baseline processing job from dataset
-    except ClientError as e:
-        print('baseline error', e)
 
     try:
         if error_message:

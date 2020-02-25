@@ -64,6 +64,7 @@ Resources:
                               bytes = z.read('trainingjob.json')
                               trainingJob = json.loads(bytes.decode('ascii'))
                               training_hash = hashlib.sha256(bytes).hexdigest();
+                              baseline = json.loads(z.read('baseline.json').decode('ascii'))
                   
                   params_deploy = {
                       "Parameters": {
@@ -71,7 +72,9 @@ Resources:
                           "ImageTagName": "${ImageTagName}",
                           "ModelName": "${ModelName}",
                           "TrainJobId": executionId,
-                          "TrainSha256": training_hash
+                          "TrainSha256": training_hash,
+                          "DataCaptureUri": baseline['DataCaptureConfig']['DestinationS3Uri'],
+                          "BaselineResultUri": baseline['BaselineResultUri'],
                       }
                   }
                   for outputArtifacts in event["CodePipeline.job"]["data"]["outputArtifacts"]:

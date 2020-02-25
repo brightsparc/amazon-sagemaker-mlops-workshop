@@ -35,19 +35,25 @@ def lambda_handler(event, context):
     content_type = event['headers'].get('Content-Type', 'text/csv')
     body = json.loads(event['body'])
     payload = body.get('data')
-    print('payload', endpoint_name, content_type, payload)
+    header, lines = payload.split('\n', 1)
+    print('endpoint: {}, content type: {}, header: {}'.format(endpoint_name, content_type, header))
 
     # Get boto3 sagemaker client and endpoint
     sm = boto3.client('sagemaker-runtime')
 
-    # Invoke endpoint
-    response = sm.invoke_endpoint(
-        EndpointName=endpoint_name,
-        Body=payload,
-        ContentType=content_type,
-        Accept='application/json'
-    )
-    predictions = response['Body'].read().decode('utf-8')
+    #  Split payload into multiple lines so that we capture individual records
+    predictions = ''
+    for i, line in enumerate(lines):
+        # Invoke endpoint
+        print(i, line)
+        body = header + '\n' + line
+        response = sm.invoke_endpoint(
+            EndpointName=endpoint_name,
+            Body=body,
+            ContentType=content_type,
+            Accept='application/json'
+        )
+        predictions += response['Body'].read().decode('utf-8')
 
     # Return predictions
     return {
