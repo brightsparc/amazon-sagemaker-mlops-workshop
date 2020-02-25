@@ -40,7 +40,6 @@ Resources:
         
   CfnMonitoringScheduleFunction:
     Type: AWS::Serverless::Function
-    DeletionPolicy: Retain
     Properties:
       FunctionName: !Sub mlops-cfn-monitoring-schedule
       CodeUri: ../cfn
@@ -50,7 +49,6 @@ Resources:
 
   CfnEnableDataCaptureFunction:
     Type: AWS::Serverless::Function
-    DeletionPolicy: Retain
     Properties:
       FunctionName: !Sub mlops-cfn-enable-data-capture
       CodeUri: ../cfn
@@ -60,7 +58,6 @@ Resources:
 
   CfnSagemakerFunctionRole:
     Type: AWS::IAM::Role
-    DeletionPolicy: Retain
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -76,27 +73,22 @@ Resources:
       Policies:
         - PolicyDocument:
             Statement:
-              - Effect: Allow
+              - 
+                Sid: AllowSageMaker
+                Effect: Allow
                 Action:
                   - sagemaker:DescribeEndpoint
+                  - sagemaker:UpdateEndpoint
                   - sagemaker:CreateEndpointConfig
                   - sagemaker:DescribeEndpointConfig
                   - sagemaker:DeleteEndpointConfig
-                  - sagemaker:UpdateEndpoint
-                Resource: 
-                  "arn:aws:sagemaker:*:*:endpoint/*" 
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
                   - sagemaker:CreateMonitoringSchedule
                   - sagemaker:DeleteMonitoringSchedule
                   - sagemaker:DescribeMonitoringSchedule
-                Resource:
-                  "arn:aws:sagemaker:*:*:monitoring-schedule/*"
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
+                Resource: "arn:aws:sagemaker:*:*:*/*"
+              - 
+                Sid: AllowPassRole
+                Effect: Allow
                 Action:
                  - iam:PassRole
                 Resource: "*"
@@ -159,7 +151,9 @@ Resources:
       Policies:
         - PolicyDocument:
             Statement:
-              - Effect: Allow
+              - 
+                Sid: AllowSageMaker
+                Effect: Allow
                 Action:
                   - sagemaker:InvokeEndpoint
                 Resource: 
@@ -177,14 +171,16 @@ Resources:
       Policies:
         - Version: "2012-10-17"
           Statement:
-            - Effect: Allow
+            - 
+              Sid: AllowSageMaker
+              Effect: Allow
               Action:
                 - sagemaker:DescribeEndpoint
               Resource: 
                 "arn:aws:sagemaker:*:*:endpoint/*"
-        - Version: "2012-10-17"
-          Statement:
-            - Effect: Allow
+            - 
+              Sid: AllowCodeDeploy
+              Effect: Allow
               Action:
                 - codedeploy:PutLifecycleEventHookExecutionStatus
               Resource:
