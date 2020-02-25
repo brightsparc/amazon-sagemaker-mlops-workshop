@@ -124,8 +124,8 @@ def update_endpoint(event):
     )
     logger.info('Update endpoint: %s', endpoint_name)
 
-    # Leave the old endpoint config to be cleaned up by cloud formation
-    return new_config_name
+    # Return the new endpoint config name
+    helper.Data['EndpointConfigName'] = new_config_name 
 
 def delete_endpoint_config(event):
     # Delete the newly created endpoint config

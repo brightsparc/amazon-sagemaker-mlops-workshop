@@ -96,6 +96,9 @@ def create_monitoring_schedule(event):
         MonitoringScheduleName=schedule_name,
         MonitoringScheduleConfig=monitoring_schedule_config)
 
+    # Return the schedule name
+    helper.Data['ScheduleName'] = schedule_name 
+
 def is_schedule_ready(schedule_name):
     is_ready = False
 

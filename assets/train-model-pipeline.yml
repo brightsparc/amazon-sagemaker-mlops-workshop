@@ -83,6 +83,8 @@ Resources:
                           "BaselineStatisticsUri": monitoring['BaselineStatisticsUri'],
                           "ScheduleReportsUri": monitoring['ScheduleReportsUri'],
                           "ScheduleRoleArn": monitoring['ScheduleRoleArn'],
+                          "ScheduleMetricName": monitoring['ScheduleMetricName'],
+                          "ScheduleMetricThreshold": monitoring['ScheduleMetricThreshold'],
                       })
                   }
 

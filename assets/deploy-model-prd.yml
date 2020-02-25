@@ -33,6 +33,12 @@ Parameters:
   ScheduleRoleArn:
     Type: String
     Description: The role for executing the monitoring schedule
+  ScheduleMetricName:
+    Type: String
+    Description: The metric to alarm on for schedule
+  ScheduleMetricThreshold:
+    Type: Number
+    Description: The metric alarm threshold
 
 Resources:
   DeploymentCompleteTopic:
@@ -87,6 +93,18 @@ Resources:
                   - sagemaker:DescribeMonitoringSchedule
                 Resource: "arn:aws:sagemaker:*:*:*/*"
               - 
+                Sid: AllowLambda
+                Effect: Allow
+                Action:
+                - lambda:* # Requires at least lambda:AddPermission
+                Resource: "*" # TODO: Narrow this down 
+              - 
+                Sid: AllowEvents
+                Effect: Allow
+                Action:
+                - events:* # Requires at least events:PutRule/events:RemoveTargets
+                Resource: "*" # TODO: Narrow this down
+              - 
                 Sid: AllowPassRole
                 Effect: Allow
                 Action:
@@ -125,7 +143,7 @@ Resources:
             TriggerTargetArn: !Ref DeploymentCompleteTopic          
       Environment:
         Variables:
-          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+          ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
       Events:
         Invoke:
           Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
@@ -189,21 +207,22 @@ Resources:
         Enabled: False
       Environment:
         Variables:
-          ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
+          ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
 
   SagemakerDataCapture:
     Type: Custom::EnableDataCapture
     Properties:
       ServiceToken: !GetAtt CfnEnableDataCaptureFunction.Arn
-      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      EndpointName: !GetAtt Endpoint.EndpointName
       EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
+      DataCaptureUri: !Ref DataCaptureUri
     DependsOn: Endpoint
 
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
     Properties:
       ServiceToken: !GetAtt CfnMonitoringScheduleFunction.Arn
-      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      EndpointName: !GetAtt Endpoint.EndpointName
       ScheduleName: !Sub mlops-mon-${ModelName}-prd-${TrainJobId}
       BaselineConstraintsUri: !Ref BaselineConstraintsUri
       BaselineStatisticsUri: !Ref BaselineStatisticsUri
@@ -211,26 +230,28 @@ Resources:
       PassRoleArn: !Ref ScheduleRoleArn
     DependsOn: SagemakerDataCapture
 
-  AliasErrorMetricGreaterThanZeroAlarm:
+  SagemakerScheduleAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
-      AlarmDescription: Lambda Function Error > 0
+      AlarmName: !Sub mlops-${ModelName}-metric-gt-threshold
+      AlarmDescription: Schedule Metric > Threshold
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
-        - Name: Resource
-          Value: !Sub "${ApiFunction}:live"
-        - Name: FunctionName
-          Value: !Ref ApiFunction
+        - Name: Endpoint
+          Value: !GetAtt Endpoint.EndpointName
+        - Name: MonitoringSchedule
+          Value: !GetAtt SagemakerMonitoringSchedule.ScheduleName
       EvaluationPeriods: 2
-      MetricName: Errors
-      Namespace: AWS/Lambda
+      MetricName: !Ref ScheduleMetricName
+      Namespace: aws/sagemaker/Endpoints/data-metrics
       Period: 60
       Statistic: Sum
-      Threshold: 0
+      Threshold: !Ref ScheduleMetricThreshold
 
   AliasErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
+      AlarmName: !Sub mlops-${ModelName}-alias-gt-zero
       AlarmDescription: Lambda Function Error > 0
       ComparisonOperator: GreaterThanThreshold
       Dimensions:
@@ -248,6 +269,7 @@ Resources:
   LatestVersionErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"
     Properties:
+      AlarmName: !Sub mlops-${ModelName}-version-gt-zero
       AlarmDescription: Lambda Function Error > 0
       ComparisonOperator: GreaterThanThreshold
       Dimensions:

@@ -42,7 +42,7 @@ def lambda_handler(event, context):
     body = json.loads(event['body'])
     payload = body.get('data')
     header, lines = payload.split('\n', 1)
-    logging.info('content type: %s csv header: %s lines: %d', content_type, header, len(lines)))
+    logging.info('content type: %s csv header: %s lines: %d', content_type, header, len(lines))
 
     try:
         #  Split payload into multiple lines so that we capture individual records
