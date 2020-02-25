@@ -45,9 +45,9 @@ Resources:
       CodeUri: ../cfn
       Handler: sagemaker_monitoring_schedule.lambda_handler
       Runtime: python3.7
-      Role: !GetAtt SagemakerFunctionRole.Arn
+      Role: !GetAtt CfnMonitoringScheduleRole.Arn
 
-  CfnFunctionRole:
+  CfnMonitoringScheduleRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
