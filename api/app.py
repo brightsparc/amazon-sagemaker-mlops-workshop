@@ -1,6 +1,11 @@
 import boto3
 import json
 import os
+import logging
+
+logger = logging.getLogger(__name__)
+
+sm_runtime = boto3.client('sagemaker-runtime')
 
 def lambda_handler(event, context):
     """Sample pure Lambda function
@@ -28,38 +33,43 @@ def lambda_handler(event, context):
     # See: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-sagemaker-endpoint.html
 
     # Print the event
+    logging.debug('event %s', json.dumps(event))
     endpoint_name = os.environ['ENDPOINT_NAME']
-    print('endpoint: {} event: {}'.format(endpoint_name, json.dumps(event)))
+    logging.info('api for endpoint %s', endpoint_name)
 
     # Get posted body and content type
     content_type = event['headers'].get('Content-Type', 'text/csv')
     body = json.loads(event['body'])
     payload = body.get('data')
     header, lines = payload.split('\n', 1)
-    print('endpoint: {}, content type: {}, header: {}'.format(endpoint_name, content_type, header))
+    logging.info('content type: %s csv header: %s lines: %d', content_type, header, len(lines)))
 
-    # Get boto3 sagemaker client and endpoint
-    sm = boto3.client('sagemaker-runtime')
+    try:
+        #  Split payload into multiple lines so that we capture individual records
+        predictions = []
+        for i, line in enumerate(lines):
+            logging.debug('%d: %s', i, line)
+            body = header + '\n' + line
+            response = sm_runtime.invoke_endpoint(
+                EndpointName=endpoint_name,
+                Body=body,
+                ContentType=content_type,
+                Accept='application/json'
+            )
+            # Append predictions as bytes
+            predictions += response['Body'].read()
 
-    #  Split payload into multiple lines so that we capture individual records
-    predictions = ''
-    for i, line in enumerate(lines):
-        # Invoke endpoint
-        print(i, line)
-        body = header + '\n' + line
-        response = sm.invoke_endpoint(
-            EndpointName=endpoint_name,
-            Body=body,
-            ContentType=content_type,
-            Accept='application/json'
-        )
-        predictions += response['Body'].read().decode('utf-8')
-
-    # Return predictions
-    return {
-        "statusCode": 200,
-        "body": json.dumps({
-            "endpoint_name": endpoint_name, # TEMP for debugging
-            "predictions": predictions
-        }),
-    }
+        return {
+            "statusCode": 200,
+            "body": json.dumps({
+                "endpoint_name": endpoint_name, 
+                "predictions": predictions.decode('utf-8')
+            }),
+        }
+    except ClientError as e:
+        logger.error('Unexpected sagemaker error')
+        logger.error(e)
+        return {
+            "statusCode": 500,
+            "message": e.response['Error']['Message']
+        }

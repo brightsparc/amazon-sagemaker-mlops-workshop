@@ -14,7 +14,7 @@ helper = CfnResource()
 
 # CFN Handlers
 
-def handler(event, context):
+def lambda_handler(event, context):
     import json
     logger.debug(json.dumps(event))
     helper(event, context)

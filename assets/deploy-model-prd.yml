@@ -39,16 +39,28 @@ Resources:
     Type: AWS::SNS::Topic
         
   CfnMonitoringScheduleFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
+    DeletionPolicy: Retain
     Properties:
-      FunctionName: !Sub mlops-${ModelName}-cfn-monitoring-schedule
+      FunctionName: !Sub mlops-cfn-monitoring-schedule
       CodeUri: ../cfn
       Handler: sagemaker_monitoring_schedule.lambda_handler
       Runtime: python3.7
-      Role: !GetAtt CfnMonitoringScheduleRole.Arn
+      Role: !GetAtt CfnSagemakerFunctionRole.Arn
 
-  CfnMonitoringScheduleRole:
+  CfnEnableDataCaptureFunction:
+    Type: AWS::Serverless::Function
+    DeletionPolicy: Retain
+    Properties:
+      FunctionName: !Sub mlops-cfn-enable-data-capture
+      CodeUri: ../cfn
+      Handler: sagemaker_data_capture.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt CfnSagemakerFunctionRole.Arn
+
+  CfnSagemakerFunctionRole:
     Type: AWS::IAM::Role
+    DeletionPolicy: Retain
     Properties:
       AssumeRolePolicyDocument:
         Statement:
@@ -66,9 +78,22 @@ Resources:
             Statement:
               - Effect: Allow
                 Action:
-                  - sagemaker:InvokeEndpoint
+                  - sagemaker:DescribeEndpoint
+                  - sagemaker:CreateEndpointConfig
+                  - sagemaker:DescribeEndpointConfig
+                  - sagemaker:DeleteEndpointConfig
+                  - sagemaker:UpdateEndpoint
                 Resource: 
                   "arn:aws:sagemaker:*:*:endpoint/*" 
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sagemaker:CreateMonitoringSchedule
+                  - sagemaker:DeleteMonitoringSchedule
+                  - sagemaker:DescribeMonitoringSchedule
+                Resource:
+                  "arn:aws:sagemaker:*:*:monitoring-schedule/*"
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
@@ -82,7 +107,7 @@ Resources:
           PolicyName: SageMakerMonitoringSchedule
 
   ApiFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Serverless::Function
     Properties:
       FunctionName: !Sub mlops-${ModelName}-api
       CodeUri: ../api
@@ -98,7 +123,7 @@ Resources:
           - !Ref AliasErrorMetricGreaterThanZeroAlarm
           - !Ref LatestVersionErrorMetricGreaterThanZeroAlarm
         Hooks:
-          # Validation Lambda functions that are run before & after traffic shifting
+          # Validation Lambda functions that are run before traffic shifting
           PreTraffic: !Ref PreTrafficLambdaFunction
         TriggerConfigurations:
           - TriggerEvents:
@@ -154,9 +179,9 @@ Resources:
           Statement:
             - Effect: Allow
               Action:
-                - sagemaker:* # TODO: Tighten up this with DataCapture CFN
+                - sagemaker:DescribeEndpoint
               Resource: 
-                "arn:aws:sagemaker:*:*:*/*"
+                "arn:aws:sagemaker:*:*:endpoint/*"
         - Version: "2012-10-17"
           Statement:
             - Effect: Allow
@@ -169,7 +194,14 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_NAME: !Sub mlops-${ModelName}-prd-${TrainJobId}
-          DATA_CAPTURE_URI: !Ref DataCaptureUri # TODO: Move to custom resource
+
+  SagemakerDataCapture:
+    Type: Custom::EnableDataCapture
+    Properties:
+      ServiceToken: !GetAtt CfnEnableDataCaptureFunction.Arn
+      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
+    DependsOn: Endpoint
 
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
@@ -181,6 +213,7 @@ Resources:
       BaselineStatisticsUri: !Ref BaselineStatisticsUri
       OutputS3URI: !Ref ScheduleReportsUri
       PassRoleArn: !Ref ScheduleRoleArn
+    DependsOn: SagemakerDataCapture
 
   AliasErrorMetricGreaterThanZeroAlarm:
     Type: "AWS::CloudWatch::Alarm"
@@ -264,7 +297,7 @@ Resources:
     Properties:
       MaxCapacity: 10
       MinCapacity: 2
-      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/mlops-${ModelName}-prd-${TrainJobId}
+      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/AllTraffic
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
@@ -275,9 +308,8 @@ Resources:
     Properties: 
       PolicyName: SageMakerVariantInvocationsPerInstance
       PolicyType: TargetTrackingScaling
-      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/mlops-${ModelName}-prd-${TrainJobId}
+      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/AllTraffic
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
-      
       ServiceNamespace: sagemaker
       TargetTrackingScalingPolicyConfiguration:
         TargetValue: 750.0
@@ -286,9 +318,3 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: SageMakerVariantInvocationsPerInstance
     DependsOn: AutoScaling
-
-  
-
-  
-
-  
