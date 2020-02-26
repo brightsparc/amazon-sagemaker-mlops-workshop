@@ -53,24 +53,24 @@ def lambda_handler(event, context):
         logger.error('Error checking endpoint %s', error_message)
 
     try:
-        if error_message:
+        if error_message != None:
+            logger.info('put codepipeline failed: %s', error_message)
             response = cd.put_lifecycle_event_hook_execution_status(
                 deploymentId=event['DeploymentId'],
                 lifecycleEventHookExecutionId=event['LifecycleEventHookExecutionId'],
                 status='Failed'
             )
-            logger.info('codepipeline failed')
             return {
                 "statusCode": 400,
                 "message": error_message
             }
         else:
+            logger.info('put codepipeline success')
             response = cd.put_lifecycle_event_hook_execution_status(
                 deploymentId=event['DeploymentId'],
                 lifecycleEventHookExecutionId=event['LifecycleEventHookExecutionId'],
                 status='Succeeded'
             )
-            logger.info('codepipeline success')
             return {
                 "statusCode": 200,
             }    
