@@ -14,12 +14,11 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
-    import json
-    logger.debug(json.dumps(event))
     helper(event, context)
 
 
 @helper.create
+@helper.update
 def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
@@ -35,6 +34,7 @@ def delete_handler(event, context):
     delete_endpoint_config(event)
 
 @helper.poll_create
+@helper.poll_update
 def poll_create(event, context):
     """
     Return true if the resource has been created and false otherwise so
@@ -44,12 +44,7 @@ def poll_create(event, context):
     logger.info('Polling for update of endpoint: %s', endpoint_name)
     return is_endpoint_ready(endpoint_name)
 
-@helper.update
-def noop():
-    """
-    Not currently implemented but crhelper will throw an error if it isn't added
-    """
-    pass
+# Helper Functions
 
 def get_endpoint_name(event):
     return event['ResourceProperties']['EndpointName']

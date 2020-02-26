@@ -15,8 +15,6 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
-    import json
-    logger.debug(json.dumps(event))
     helper(event, context)
 
 
@@ -26,7 +24,6 @@ def create_handler(event, context):
     Called when CloudFormation custom resource sends the create event
     """
     create_monitoring_schedule(event)
-
 
 @helper.delete
 def delete_handler(event, context):
@@ -38,6 +35,7 @@ def delete_handler(event, context):
 
 
 @helper.poll_create
+@helper.poll_update
 def poll_create(event, context):
     """
     Return true if the resource has been created and false otherwise so
@@ -48,7 +46,7 @@ def poll_create(event, context):
     return is_schedule_ready(schedule_name)
 
 @helper.update
-def noop():
+def update_handler(event, context):
     """
     Not currently implemented but crhelper will throw an error if it isn't added
     """

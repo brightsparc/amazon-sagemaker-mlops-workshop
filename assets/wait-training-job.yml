@@ -1,0 +1,14 @@
+Transform: AWS::Serverless-2016-10-31
+Description: Wait for a training job
+Parameters:
+  TrainingJobName:
+    Type: String
+    Description: The name of the training job to wait on
+
+Resources:
+  SagemakerTrainingJobWaiter:
+    Type: Custom::TrainingJobWaiter
+    Properties:
+      ServiceToken: 
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-training-job-waiter'
+      TrainingJobName: !Ref TrainingJobName
