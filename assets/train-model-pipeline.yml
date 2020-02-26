@@ -88,7 +88,7 @@ Resources:
                   }
 
                   params_deploy_prod = {
-                      "Parameters": dict(params_dev['Parameters'], **{
+                      "Parameters": dict(params_deploy_dev['Parameters'], **{
                           "TrainSha256": training_hash,
                           "DataCaptureUri": monitoring['DataCaptureUri'],
                           "BaselineConstraintsUri": monitoring['BaselineConstraintsUri'],
@@ -114,9 +114,6 @@ Resources:
                   # launch training job
                   print(trainingJob)
                   sagemaker.create_training_job(**trainingJob)
-
-                  # # enable monitoring event
-                  # cloudwatch_events.enable_rule( Name='mlops-job-monitor-${ModelName}')
 
                   # and update codepipeline
                   codepipeline.put_job_success_result(jobId=jobId)
