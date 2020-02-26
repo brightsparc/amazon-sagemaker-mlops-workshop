@@ -11,31 +11,6 @@ sm = boto3.client('sagemaker')
 cd = boto3.client('codedeploy')
 
 def lambda_handler(event, context):
-    """Sample pure Lambda function
-
-    Parameters
-    ----------
-    event: dict, required
-        API Gateway Lambda Proxy Input Format
-
-        Event doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-input-format
-
-    context: object, required
-        Lambda Context runtime methods and attributes
-
-        Context doc: https://docs.aws.amazon.com/lambda/latest/dg/python-context-object.html
-
-    Returns
-    ------
-    API Gateway Lambda Proxy Output Format: dict
-
-        Return doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html
-    """
-
-    # Implement pre traffic handler
-    # See: https://awslabs.github.io/serverless-application-model/safe_lambda_deployments.html
-
-    # Print the event
     logger.debug('event %s', json.dumps(event))
     endpoint_name = os.environ['ENDPOINT_NAME']
     logger.info('pre traffic for endpoint %s', endpoint_name)
@@ -48,6 +23,7 @@ def lambda_handler(event, context):
         if status != 'InService':
             error_message = 'SageMaker endpoint: {} status: {} not InService'.format(
                 endpoint_name, status)
+        # TODO: Add checks to make sure endpoint data capture is enabled and correct uri
         # Add any aditional invocation checks here
     except ClientError as e:
         error_message = e.response['Error']['Message']

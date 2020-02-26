@@ -99,20 +99,16 @@ def create_monitoring_schedule(event):
     return helper.Data['Arn']
 
 def is_schedule_ready(schedule_name):
-    is_ready = False
-
     schedule = sm.describe_monitoring_schedule(MonitoringScheduleName=schedule_name)
     status = schedule['MonitoringScheduleStatus']
-
     if status == 'Scheduled':
         logger.info('Monitoring schedule (%s) is ready', schedule_name)
-        is_ready = True
+        return True
     elif status == 'Pending':
         logger.info('Monitoring schedule (%s) still creating, waiting and polling again...', schedule_name)
     else:
         raise Exception('Monitoring schedule ({}) has unexpected status: {}'.format(schedule_name, status))
-
-    return is_ready
+    return False
 
 def create_monitoring_schedule_config(event):
     props = event['ResourceProperties']

@@ -75,9 +75,6 @@ Resources:
           Value: !Sub mlops-${ModelName}-prd-${TrainJobId}
     DependsOn: EndpointConfig
 
-  DeploymentCompleteTopic:
-    Type: AWS::SNS::Topic
-
   SagemakerDataCapture:
     Type: Custom::EnableDataCapture
     Properties:
@@ -87,6 +84,9 @@ Resources:
       EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
       DataCaptureUri: !Ref DataCaptureUri
     DependsOn: Endpoint
+
+  DeploymentCompleteTopic:
+    Type: AWS::SNS::Topic
 
   ApiFunction:
     Type: AWS::Serverless::Function
@@ -105,8 +105,9 @@ Resources:
           - !Ref AliasErrorMetricGreaterThanZeroAlarm
           - !Ref LatestVersionErrorMetricGreaterThanZeroAlarm
         Hooks:
-          # Validation Lambda functions that are run before traffic shifting
+          # Validation Lambda functions that are run before and after traffic shifting
           PreTraffic: !Ref PreTrafficLambdaFunction
+          PostTraffic: !Ref PostTrafficLambdaFunction
         TriggerConfigurations:
           - TriggerEvents:
               - DeploymentSuccess
@@ -118,11 +119,12 @@ Resources:
           ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
       Events:
         Invoke:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
+          Type: Api
           Properties:
             Path: /api
             Method: post
     DependsOn: SagemakerDataCapture 
+    Description: "Api deployment that invokes SagemMaker endpoint"
 
   ApiFunctionRole:
     Type: AWS::IAM::Role
@@ -180,6 +182,33 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
+          DATA_CAPTURE_URI: !Ref DataCaptureUri
+      Description: "Perform checks pre-shifting traffic to lambda"
+
+  PostTrafficLambdaFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: !Sub 'CodeDeployHook_mlops-${ModelName}-PostTrafficLambdaFunction'
+      CodeUri: ../api
+      Handler: post_traffic_hook.lambda_handler
+      Runtime: python3.7
+      Policies:
+        - Version: "2012-10-17"
+          Statement:
+            - 
+              Sid: AllowCodeDeploy
+              Effect: Allow
+              Action:
+                - codedeploy:PutLifecycleEventHookExecutionStatus
+              Resource:
+                !Sub 'arn:${AWS::Partition}:codedeploy:${AWS::Region}:${AWS::AccountId}:deploymentgroup:${ServerlessDeploymentApplication}/*'
+      DeploymentPreference:
+        Enabled: False
+      Environment:
+        Variables:
+          ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
+          DATA_CAPTURE_URI: !Ref DataCaptureUri
+      Description: "Perform checks post-shifting traffic to lambda"
 
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
