@@ -90,13 +90,20 @@ def create_monitoring_schedule(event):
 
     logger.info('Creating monitoring schedule with name: %s', schedule_name)
 
-    response = sm.create_monitoring_schedule(
-        MonitoringScheduleName=schedule_name,
-        MonitoringScheduleConfig=monitoring_schedule_config)
+    try:
+        response = sm.create_monitoring_schedule(
+            MonitoringScheduleName=schedule_name,
+            MonitoringScheduleConfig=monitoring_schedule_config)
 
-    # Updating the monitoring schedule arn
-    helper.Data['Arn'] = response["MonitoringScheduleArn"]
-    return helper.Data['Arn']
+        # Updating the monitoring schedule arn
+        helper.Data['Arn'] = response["MonitoringScheduleArn"]
+        return helper.Data['Arn']
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ValidationException':
+            logger.error('Unable to create schedule: %s', e.response['Error']['Message'])
+        else:
+            logger.error('Unexpected error while trying to delete monitoring schedule')
+        raise e
 
 def is_schedule_ready(schedule_name):
     schedule = sm.describe_monitoring_schedule(MonitoringScheduleName=schedule_name)
