@@ -62,7 +62,7 @@ Resources:
                   - sagemaker:CreateMonitoringSchedule
                   - sagemaker:DeleteMonitoringSchedule
                   - sagemaker:DescribeMonitoringSchedule
-                Resource: "arn:aws:sagemaker:*:*:*/*"
+                Resource: "*"
               - 
                 Sid: AllowLambda
                 Effect: Allow

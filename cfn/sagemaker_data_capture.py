@@ -110,14 +110,28 @@ def update_endpoint(event):
         request["KmsKeyId"] = endpoint_config.get("KmsKeyId")
 
     # Create the endpoint config
-    response = sm.create_endpoint_config(**request)
-    logger.info('Create endpoint config: %s', new_config_name)
+    try:
+        response = sm.create_endpoint_config(**request)
+        logger.info('Create endpoint config: %s', new_config_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ValidationException':
+            logger.info('Error creating new config: %s', e.response['Error']['Message'])
+        else:
+            logger.error('Unexpected error while trying to create endpoint config')
+            raise e
     
     # Update endpoint to point to new config
-    response = sm.update_endpoint(
-        EndpointName=endpoint_name, EndpointConfigName=new_config_name
-    )
-    logger.info('Update endpoint: %s', endpoint_name)
+    try:
+        response = sm.update_endpoint(
+            EndpointName=endpoint_name, EndpointConfigName=new_config_name
+        )
+        logger.info('Update endpoint: %s', endpoint_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ValidationException':
+            logger.info('Error updating endpoint: %s', e.response['Error']['Message'])
+        else:
+            logger.error('Unexpected error while trying to update endpoint')
+            raise e
 
     # Return the new endpoint config name
     helper.Data['EndpointConfigName'] = new_config_name 
