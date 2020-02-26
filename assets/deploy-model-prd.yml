@@ -249,7 +249,7 @@ Resources:
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
-    DependsOn: Endpoint
+    DependsOn: SagemakerDataCapture # Wait until Endpoint update is complete
 
   AutoScalingPolicy:
     Type: "AWS::ApplicationAutoScaling::ScalingPolicy"

@@ -9,6 +9,7 @@ Resources:
       Handler: sagemaker_monitoring_schedule.lambda_handler
       Runtime: python3.7
       Role: !GetAtt SagemakerCustomResourceRole.Arn
+      Description: "Creates a SageMaker Monitoring Schedule for a given Endpoint"
 
   EnableDataCaptureFunction:
     Type: AWS::Serverless::Function
@@ -18,6 +19,7 @@ Resources:
       Handler: sagemaker_data_capture.lambda_handler
       Runtime: python3.7
       Role: !GetAtt SagemakerCustomResourceRole.Arn
+      Description: "Enables data capture on a given SageMaker Endpoint"
 
   TrainingWaiterFunction:
     Type: AWS::Serverless::Function
@@ -27,6 +29,7 @@ Resources:
       Handler: sagemaker_training_waiter.lambda_handler
       Runtime: python3.7
       Role: !GetAtt SagemakerCustomResourceRole.Arn
+      Description: "Waits for a SageMaker Training Job to complete"
       
   SagemakerCustomResourceRole:
     Type: AWS::IAM::Role
