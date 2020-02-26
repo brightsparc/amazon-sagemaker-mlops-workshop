@@ -41,80 +41,42 @@ Parameters:
     Description: The metric alarm threshold
 
 Resources:
+
+  Model:
+    Type: "AWS::SageMaker::Model"
+    Properties:
+      ModelName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      PrimaryContainer:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTagName}
+        ModelDataUrl: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/mlops-${ModelName}-${TrainJobId}/output/model.tar.gz
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+
+  EndpointConfig:
+    Type: "AWS::SageMaker::EndpointConfig"
+    Properties:
+      ProductionVariants:
+      - InitialInstanceCount: 2
+        InitialVariantWeight: 1.0
+        InstanceType: ml.c5.large
+        ModelName: !GetAtt Model.ModelName
+        VariantName: AllTraffic
+      EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+      Tags:
+        - Key: Name
+          Value: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+
+  Endpoint:
+    Type: "AWS::SageMaker::Endpoint"
+    Properties:
+      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      EndpointConfigName: !GetAtt EndpointConfig.EndpointConfigName
+      Tags:
+        - Key: Name
+          Value: !Sub mlops-${ModelName}-prd-${TrainJobId}
+    DependsOn: EndpointConfig
+
   DeploymentCompleteTopic:
     Type: AWS::SNS::Topic
-        
-  CfnMonitoringScheduleFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub mlops-cfn-monitoring-schedule
-      CodeUri: ../cfn
-      Handler: sagemaker_monitoring_schedule.lambda_handler
-      Runtime: python3.7
-      Role: !GetAtt CfnSagemakerFunctionRole.Arn
-
-  CfnEnableDataCaptureFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: !Sub mlops-cfn-enable-data-capture
-      CodeUri: ../cfn
-      Handler: sagemaker_data_capture.lambda_handler
-      Runtime: python3.7
-      Role: !GetAtt CfnSagemakerFunctionRole.Arn
-
-  CfnSagemakerFunctionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      AssumeRolePolicyDocument:
-        Statement:
-          - Action:
-              - sts:AssumeRole
-            Effect: Allow
-            Principal:
-              Service:
-                - lambda.amazonaws.com
-        Version: '2012-10-17'
-      ManagedPolicyArns:
-        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
-      Policies:
-        - PolicyDocument:
-            Statement:
-              - 
-                Sid: AllowSageMaker
-                Effect: Allow
-                Action:
-                  - sagemaker:DescribeEndpoint
-                  - sagemaker:UpdateEndpoint
-                  - sagemaker:CreateEndpointConfig
-                  - sagemaker:DescribeEndpointConfig
-                  - sagemaker:DeleteEndpointConfig
-                  - sagemaker:CreateMonitoringSchedule
-                  - sagemaker:DeleteMonitoringSchedule
-                  - sagemaker:DescribeMonitoringSchedule
-                Resource: "arn:aws:sagemaker:*:*:*/*"
-              - 
-                Sid: AllowLambda
-                Effect: Allow
-                Action:
-                - lambda:* # Requires at least lambda:AddPermission
-                Resource: "*" # TODO: Narrow this down 
-              - 
-                Sid: AllowEvents
-                Effect: Allow
-                Action:
-                - events:* # Requires at least events:PutRule/events:RemoveTargets
-                Resource: "*" # TODO: Narrow this down
-              - 
-                Sid: AllowPassRole
-                Effect: Allow
-                Action:
-                 - iam:PassRole
-                Resource: "*"
-                Condition:
-                  StringEquals:
-                    iam:PassedToService: sagemaker.amazonaws.com
-            Version: '2012-10-17'
-          PolicyName: SageMakerMonitoringSchedule
 
   ApiFunction:
     Type: AWS::Serverless::Function
@@ -212,7 +174,8 @@ Resources:
   SagemakerDataCapture:
     Type: Custom::EnableDataCapture
     Properties:
-      ServiceToken: !GetAtt CfnEnableDataCaptureFunction.Arn
+      ServiceToken: 
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-enable-data-capture'
       EndpointName: !GetAtt Endpoint.EndpointName
       EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
       DataCaptureUri: !Ref DataCaptureUri
@@ -221,7 +184,8 @@ Resources:
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
     Properties:
-      ServiceToken: !GetAtt CfnMonitoringScheduleFunction.Arn
+      ServiceToken: 
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-monitoring-schedule'
       EndpointName: !GetAtt Endpoint.EndpointName
       ScheduleName: !Sub mlops-mon-${ModelName}-prd-${TrainJobId}
       BaselineConstraintsUri: !Ref BaselineConstraintsUri
@@ -285,30 +249,6 @@ Resources:
       Period: 60
       Statistic: Sum
       Threshold: 0
-            
-  EndpointConfig:
-    Type: "AWS::SageMaker::EndpointConfig"
-    Properties:
-      ProductionVariants:
-      - InitialInstanceCount: 2
-        InitialVariantWeight: 1.0
-        InstanceType: ml.c5.large
-        ModelName: !Sub mlops-${ModelName}-${TrainJobId}
-        VariantName: AllTraffic
-      EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
-      Tags:
-        - Key: Name
-          Value: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
-
-  Endpoint:
-    Type: "AWS::SageMaker::Endpoint"
-    Properties:
-      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
-      EndpointConfigName: !GetAtt EndpointConfig.EndpointConfigName
-      Tags:
-        - Key: Name
-          Value: !Sub mlops-${ModelName}-prd-${TrainJobId}
-    DependsOn: EndpointConfig
 
   AutoScaling:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
@@ -319,7 +259,7 @@ Resources:
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
-    DependsOn: Endpoint
+    DependsOn: SagemakerDataCapture # Wait until Endpoint update is complete
 
   AutoScalingPolicy:
     Type: "AWS::ApplicationAutoScaling::ScalingPolicy"

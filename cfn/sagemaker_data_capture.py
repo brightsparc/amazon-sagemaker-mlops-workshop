@@ -14,17 +14,16 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
-    import json
-    logger.debug(json.dumps(event))
     helper(event, context)
 
 
 @helper.create
+@helper.update
 def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
     """
-    update_endpoint(event)
+    return update_endpoint(event)
 
 
 @helper.delete
@@ -35,6 +34,7 @@ def delete_handler(event, context):
     delete_endpoint_config(event)
 
 @helper.poll_create
+@helper.poll_update
 def poll_create(event, context):
     """
     Return true if the resource has been created and false otherwise so
@@ -44,12 +44,7 @@ def poll_create(event, context):
     logger.info('Polling for update of endpoint: %s', endpoint_name)
     return is_endpoint_ready(endpoint_name)
 
-@helper.update
-def noop():
-    """
-    Not currently implemented but crhelper will throw an error if it isn't added
-    """
-    pass
+# Helper Functions
 
 def get_endpoint_name(event):
     return event['ResourceProperties']['EndpointName']
@@ -114,18 +109,27 @@ def update_endpoint(event):
     if endpoint_config.get("KmsKeyId") is not None:
         request["KmsKeyId"] = endpoint_config.get("KmsKeyId")
 
-    # Create the endpoint config
-    response = sm.create_endpoint_config(**request)
-    logger.info('Create endpoint config: %s', new_config_name)
-    
-    # Update endpoint to point to new config
-    response = sm.update_endpoint(
-        EndpointName=endpoint_name, EndpointConfigName=new_config_name
-    )
-    logger.info('Update endpoint: %s', endpoint_name)
+    try:
+        # Create the endpoint config
+        logger.info('Create endpoint config: %s', new_config_name)
+        response = sm.create_endpoint_config(**request)
+        helper.Data['Arn'] = response["EndpointConfigArn"]
 
-    # Return the new endpoint config name
-    helper.Data['EndpointConfigName'] = new_config_name 
+        # Update endpoint to point to new config
+        logger.info('Update endpoint: %s', endpoint_name)
+        sm.update_endpoint(
+            EndpointName=endpoint_name, EndpointConfigName=new_config_name
+        )
+
+        # Return the new endpoint config name
+        return helper.Data['Arn']
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ValidationException':
+            logger.error('Error creating new config: %s', e.response['Error']['Message'])
+        else:
+            logger.error('Unexpected error while trying to create endpoint config')
+            raise e
+
 
 def delete_endpoint_config(event):
     # Delete the newly created endpoint config

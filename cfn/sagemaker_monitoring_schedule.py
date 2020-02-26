@@ -15,8 +15,6 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
-    import json
-    logger.debug(json.dumps(event))
     helper(event, context)
 
 
@@ -25,8 +23,7 @@ def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
     """
-    create_monitoring_schedule(event)
-
+    return create_monitoring_schedule(event)
 
 @helper.delete
 def delete_handler(event, context):
@@ -38,6 +35,7 @@ def delete_handler(event, context):
 
 
 @helper.poll_create
+@helper.poll_update
 def poll_create(event, context):
     """
     Return true if the resource has been created and false otherwise so
@@ -48,7 +46,7 @@ def poll_create(event, context):
     return is_schedule_ready(schedule_name)
 
 @helper.update
-def noop():
+def update_handler(event, context):
     """
     Not currently implemented but crhelper will throw an error if it isn't added
     """
@@ -92,12 +90,13 @@ def create_monitoring_schedule(event):
 
     logger.info('Creating monitoring schedule with name: %s', schedule_name)
 
-    sm.create_monitoring_schedule(
+    response = sm.create_monitoring_schedule(
         MonitoringScheduleName=schedule_name,
         MonitoringScheduleConfig=monitoring_schedule_config)
 
-    # Return the schedule name
-    helper.Data['ScheduleName'] = schedule_name 
+    # Updating the monitoring schedule arn
+    helper.Data['Arn'] = response["MonitoringScheduleArn"]
+    return helper.Data['Arn']
 
 def is_schedule_ready(schedule_name):
     is_ready = False
@@ -178,7 +177,6 @@ def create_monitoring_schedule_config(event):
         app = request["MonitoringJobDefinition"]["MonitoringAppSpecification"]
         app["PostAnalyticsProcessorSourceUri"] = props['PostAnalyticsProcessorSourceUri']
     return request
-
 
 
 def delete_monitoring_schedule(schedule_name):

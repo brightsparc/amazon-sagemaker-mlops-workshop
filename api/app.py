@@ -4,6 +4,7 @@ import os
 import logging
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 sm_runtime = boto3.client('sagemaker-runtime')
 
@@ -33,22 +34,22 @@ def lambda_handler(event, context):
     # See: https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-sagemaker-endpoint.html
 
     # Print the event
-    logging.debug('event %s', json.dumps(event))
+    logger.debug('event %s', json.dumps(event))
     endpoint_name = os.environ['ENDPOINT_NAME']
-    logging.info('api for endpoint %s', endpoint_name)
+    logger.info('api for endpoint %s', endpoint_name)
 
     # Get posted body and content type
     content_type = event['headers'].get('Content-Type', 'text/csv')
     body = json.loads(event['body'])
     payload = body.get('data')
     header, lines = payload.split('\n', 1)
-    logging.info('content type: %s csv header: %s lines: %d', content_type, header, len(lines))
+    logger.info('content type: %s csv header: %s lines: %d', content_type, header, len(lines))
 
     try:
         #  Split payload into multiple lines so that we capture individual records
         predictions = []
         for i, line in enumerate(lines):
-            logging.debug('%d: %s', i, line)
+            logger.debug('%d: %s', i, line)
             body = header + '\n' + line
             response = sm_runtime.invoke_endpoint(
                 EndpointName=endpoint_name,
