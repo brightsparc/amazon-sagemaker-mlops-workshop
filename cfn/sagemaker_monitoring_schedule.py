@@ -90,12 +90,12 @@ def create_monitoring_schedule(event):
 
     logger.info('Creating monitoring schedule with name: %s', schedule_name)
 
-    sm.create_monitoring_schedule(
+    response = sm.create_monitoring_schedule(
         MonitoringScheduleName=schedule_name,
         MonitoringScheduleConfig=monitoring_schedule_config)
 
-    # Return the schedule name
-    helper.Data['ScheduleName'] = schedule_name 
+    # Updating the monitoring schedule arn
+    helper.Data['Arn'] = response["MonitoringScheduleArn"] 
 
 def is_schedule_ready(schedule_name):
     is_ready = False
