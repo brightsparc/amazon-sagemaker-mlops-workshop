@@ -20,9 +20,8 @@ Resources:
 
   Model:
     Type: "AWS::SageMaker::Model"
-    DeletionPolicy: Retain
     Properties:
-      ModelName: !Sub mlops-${ModelName}-${TrainJobId}
+      ModelName: !Sub mlops-${ModelName}-dev-${TrainJobId}
       PrimaryContainer:
         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTagName}
         ModelDataUrl: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/mlops-${ModelName}-${TrainJobId}/output/model.tar.gz

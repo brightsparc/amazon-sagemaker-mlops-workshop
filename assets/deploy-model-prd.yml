@@ -41,6 +41,40 @@ Parameters:
     Description: The metric alarm threshold
 
 Resources:
+
+  Model:
+    Type: "AWS::SageMaker::Model"
+    Properties:
+      ModelName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      PrimaryContainer:
+        Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTagName}
+        ModelDataUrl: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/mlops-${ModelName}-${TrainJobId}/output/model.tar.gz
+      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+
+  EndpointConfig:
+    Type: "AWS::SageMaker::EndpointConfig"
+    Properties:
+      ProductionVariants:
+      - InitialInstanceCount: 2
+        InitialVariantWeight: 1.0
+        InstanceType: ml.c5.large
+        ModelName: !GetAtt Model.ModelName
+        VariantName: AllTraffic
+      EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+      Tags:
+        - Key: Name
+          Value: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+
+  Endpoint:
+    Type: "AWS::SageMaker::Endpoint"
+    Properties:
+      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
+      EndpointConfigName: !GetAtt EndpointConfig.EndpointConfigName
+      Tags:
+        - Key: Name
+          Value: !Sub mlops-${ModelName}-prd-${TrainJobId}
+    DependsOn: EndpointConfig
+
   DeploymentCompleteTopic:
     Type: AWS::SNS::Topic
 
@@ -215,30 +249,6 @@ Resources:
       Period: 60
       Statistic: Sum
       Threshold: 0
-            
-  EndpointConfig:
-    Type: "AWS::SageMaker::EndpointConfig"
-    Properties:
-      ProductionVariants:
-      - InitialInstanceCount: 2
-        InitialVariantWeight: 1.0
-        InstanceType: ml.c5.large
-        ModelName: !Sub mlops-${ModelName}-${TrainJobId}
-        VariantName: AllTraffic
-      EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
-      Tags:
-        - Key: Name
-          Value: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
-
-  Endpoint:
-    Type: "AWS::SageMaker::Endpoint"
-    Properties:
-      EndpointName: !Sub mlops-${ModelName}-prd-${TrainJobId}
-      EndpointConfigName: !GetAtt EndpointConfig.EndpointConfigName
-      Tags:
-        - Key: Name
-          Value: !Sub mlops-${ModelName}-prd-${TrainJobId}
-    DependsOn: EndpointConfig
 
   AutoScaling:
     Type: AWS::ApplicationAutoScaling::ScalableTarget
