@@ -46,7 +46,8 @@ def lambda_handler(event, context):
         endpoint = sm.describe_endpoint(EndpointName=endpoint_name)
         status = endpoint['EndpointStatus']
         if status != 'InService':
-            error_message = 'SageMaker endpoint: {} not InService'.format(endpoint_name)
+            error_message = 'SageMaker endpoint: {} status: {} not InService'.format(
+                endpoint_name, status)
         # Add any aditional invocation checks here
     except ClientError as e:
         error_message = e.response['Error']['Message']

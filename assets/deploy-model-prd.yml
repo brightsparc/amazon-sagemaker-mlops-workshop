@@ -78,6 +78,16 @@ Resources:
   DeploymentCompleteTopic:
     Type: AWS::SNS::Topic
 
+  SagemakerDataCapture:
+    Type: Custom::EnableDataCapture
+    Properties:
+      ServiceToken: 
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-enable-data-capture'
+      EndpointName: !GetAtt Endpoint.EndpointName
+      EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
+      DataCaptureUri: !Ref DataCaptureUri
+    DependsOn: Endpoint
+
   ApiFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -112,7 +122,7 @@ Resources:
           Properties:
             Path: /api
             Method: post
-    DependsOn: Endpoint # Only deploy after the new endpoint is created
+    DependsOn: SagemakerDataCapture 
 
   ApiFunctionRole:
     Type: AWS::IAM::Role
@@ -170,16 +180,6 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
-
-  SagemakerDataCapture:
-    Type: Custom::EnableDataCapture
-    Properties:
-      ServiceToken: 
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-enable-data-capture'
-      EndpointName: !GetAtt Endpoint.EndpointName
-      EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
-      DataCaptureUri: !Ref DataCaptureUri
-    DependsOn: Endpoint
 
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
@@ -259,7 +259,7 @@ Resources:
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
-    DependsOn: SagemakerDataCapture # Wait until Endpoint update is complete
+    DependsOn: ApiFunction 
 
   AutoScalingPolicy:
     Type: "AWS::ApplicationAutoScaling::ScalingPolicy"
