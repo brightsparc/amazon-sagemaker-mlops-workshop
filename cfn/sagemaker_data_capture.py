@@ -23,7 +23,7 @@ def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
     """
-    update_endpoint(event)
+    return update_endpoint(event)
 
 
 @helper.delete
@@ -109,32 +109,27 @@ def update_endpoint(event):
     if endpoint_config.get("KmsKeyId") is not None:
         request["KmsKeyId"] = endpoint_config.get("KmsKeyId")
 
-    # Create the endpoint config
     try:
-        response = sm.create_endpoint_config(**request)
+        # Create the endpoint config
         logger.info('Create endpoint config: %s', new_config_name)
+        response = sm.create_endpoint_config(**request)
+        helper.Data['Arn'] = response["EndpointConfigArn"]
+
+        # Update endpoint to point to new config
+        logger.info('Update endpoint: %s', endpoint_name)
+        sm.update_endpoint(
+            EndpointName=endpoint_name, EndpointConfigName=new_config_name
+        )
+
+        # Return the new endpoint config name
+        return helper.Data['Arn']
     except ClientError as e:
         if e.response['Error']['Code'] == 'ValidationException':
-            logger.info('Error creating new config: %s', e.response['Error']['Message'])
+            logger.error('Error creating new config: %s', e.response['Error']['Message'])
         else:
             logger.error('Unexpected error while trying to create endpoint config')
             raise e
-    
-    # Update endpoint to point to new config
-    try:
-        response = sm.update_endpoint(
-            EndpointName=endpoint_name, EndpointConfigName=new_config_name
-        )
-        logger.info('Update endpoint: %s', endpoint_name)
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ValidationException':
-            logger.info('Error updating endpoint: %s', e.response['Error']['Message'])
-        else:
-            logger.error('Unexpected error while trying to update endpoint')
-            raise e
 
-    # Return the new endpoint config name
-    helper.Data['EndpointConfigName'] = new_config_name 
 
 def delete_endpoint_config(event):
     # Delete the newly created endpoint config

@@ -23,7 +23,7 @@ def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
     """
-    create_processing_job(event)
+    return create_processing_job(event)
 
 @helper.delete
 def delete_handler(event, context):
@@ -32,7 +32,6 @@ def delete_handler(event, context):
     """
     processing_job_name = get_processing_job_name(event)
     delete_processing_job(processing_job_name)
-
 
 @helper.poll_create
 @helper.poll_update
@@ -160,9 +159,10 @@ def create_processing_job(event):
     logger.info('Creating processing job with name: %s', processing_job_name)
 
     response = sm.create_processing_job(**request)
-    helper.Data['Arn'] = response["ProcessingJobArn"]
 
-    return response
+    # Update Arn
+    helper.Data['Arn'] = response["ProcessingJobArn"]
+    return helper.Data['Arn']
 
 def delete_processing_job(processing_job_name):
     logger.info('Deleting processing job: %s', processing_job_name)

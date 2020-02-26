@@ -23,7 +23,7 @@ def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
     """
-    create_monitoring_schedule(event)
+    return create_monitoring_schedule(event)
 
 @helper.delete
 def delete_handler(event, context):
@@ -95,7 +95,8 @@ def create_monitoring_schedule(event):
         MonitoringScheduleConfig=monitoring_schedule_config)
 
     # Updating the monitoring schedule arn
-    helper.Data['Arn'] = response["MonitoringScheduleArn"] 
+    helper.Data['Arn'] = response["MonitoringScheduleArn"]
+    return helper.Data['Arn']
 
 def is_schedule_ready(schedule_name):
     is_ready = False
@@ -176,7 +177,6 @@ def create_monitoring_schedule_config(event):
         app = request["MonitoringJobDefinition"]["MonitoringAppSpecification"]
         app["PostAnalyticsProcessorSourceUri"] = props['PostAnalyticsProcessorSourceUri']
     return request
-
 
 
 def delete_monitoring_schedule(schedule_name):
