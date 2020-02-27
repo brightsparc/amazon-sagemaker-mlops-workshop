@@ -198,12 +198,16 @@ def create_monitoring_schedule_config(event):
             "RoleArn": props["PassRoleArn"],
         }
     }
+    
+    # Add optional pre/processing scripts
+
+    if props.get('RecordPreprocessorSourceUri'):
+        app = request["MonitoringJobDefinition"]["MonitoringAppSpecification"]
+        app["RecordPreprocessorSourceUri"] = props['RecordPreprocessorSourceUri']
     if props.get('PostAnalyticsProcessorSourceUri'):
         app = request["MonitoringJobDefinition"]["MonitoringAppSpecification"]
-        app["RecordPreprocessorSourceUri"] = props['PostAnalyticsProcessorSourceUri']
-    if props.get('PostAnalyticsProPostAnalyticsProcessorSourceUricessorSourceUri'):
-        app = request["MonitoringJobDefinition"]["MonitoringAppSpecification"]
         app["PostAnalyticsProcessorSourceUri"] = props['PostAnalyticsProcessorSourceUri']
+
     return request
 
 

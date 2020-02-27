@@ -18,6 +18,7 @@ def lambda_handler(event, context):
     error_message = None
     try:
         # TODO: Add checks to make sure we are have data capture logs
+        pass
     except ClientError as e:
         error_message = e.response['Error']['Message']
         logger.error('Error checking endpoint %s', error_message)

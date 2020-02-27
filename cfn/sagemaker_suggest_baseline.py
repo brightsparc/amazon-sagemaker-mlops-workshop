@@ -1,6 +1,7 @@
 import boto3
 import botocore
 import logging
+import json
 
 from crhelper import CfnResource
 from botocore.exceptions import ClientError
@@ -19,6 +20,7 @@ def lambda_handler(event, context):
 
 
 @helper.create
+@helper.update
 def create_handler(event, context):
     """
     Called when CloudFormation custom resource sends the create event
@@ -28,10 +30,11 @@ def create_handler(event, context):
 @helper.delete
 def delete_handler(event, context):
     """
-    Called when CloudFormation custom resource sends the delete event
+    Processing Jobs like Training Jobs can not be deleted only stopped if running.
     """
+    pass
     processing_job_name = get_processing_job_name(event)
-    delete_processing_job(processing_job_name)
+    stop_processing_job(processing_job_name)
 
 @helper.poll_create
 @helper.poll_update
@@ -44,12 +47,19 @@ def poll_create(event, context):
     logger.info('Polling for creation of processing job: %s', processing_job_name)
     return is_processing_job_ready(processing_job_name)
 
-@helper.update
-def update_handler(event, context):
+@helper.poll_delete
+def poll_delete(event, context):
     """
-    Not currently implemented but crhelper will throw an error if it isn't added
+    Return true if the resource has been stopped.  We could ommit this callback
+    to make the delete the experience faster.
     """
-    pass
+    processing_job_name = get_processing_job_name(event)
+    logger.info('Polling for stopped processing job: %s', processing_job_name)
+    try:
+        return is_processing_job_ready(processing_job_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFound':
+            return True
 
 # Helper Functions
 
@@ -89,10 +99,10 @@ def is_processing_job_ready(processing_job_name):
     processing_job = sm.describe_processing_job(ProcessingJobName=processing_job_name)
     status = processing_job['ProcessingJobStatus']
 
-    if status == 'Completed':
-        logger.info('Processing Job (%s) is complete', processing_job_name)
+    if status == 'Stopped':
+        logger.info('Processing Job (%s) is stopped', processing_job_name)
         is_ready = True
-    elif status == 'InProgress':
+    elif status == 'InProgress' or status == 'Stopping':
         logger.info('Processing Job (%s) still in progress, waiting and polling again...', processing_job_name)
     else:
         raise Exception('Processing Job ({}) has unexpected status: {}'.format(processing_job_name, status))
@@ -100,9 +110,38 @@ def is_processing_job_ready(processing_job_name):
     return is_ready
 
 def create_processing_job(event):
-    props = event['ResourceProperties']
-
     processing_job_name = get_processing_job_name(event)
+
+    request, constraints_uri, statistics_uri = get_suggest_baseline_request(event)
+
+    logger.info('Creating processing job with name: %s', processing_job_name)
+    response = sm.create_processing_job(**request)
+
+    # Update Output Parameters
+    helper.Data['ProcessingJobName'] = processing_job_name
+    helper.Data['BaselineConstraintsUri'] = constraints_uri
+    helper.Data['BaselineStatisticsUri'] = statistics_uri
+    helper.Data['Arn'] = response["ProcessingJobArn"]
+    return helper.Data['Arn']
+
+def stop_processing_job(processing_job_name):
+    try:
+        processing_job = sm.describe_processing_job(ProcessingJobName=processing_job_name)
+        status = processing_job['ProcessingJobStatus']
+        if status == 'InProgress':
+            logger.info('Stopping InProgress processing job: %s', processing_job_name)
+            sm.stop_processing_job(ProcessingJobName=processing_job_name)
+        else:
+            logger.info('Processing job status: %s, nothing to stop', status)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFound':
+            logger.info('Resource not found, nothing to stop')
+        else:
+            logger.error('Unexpected error while trying to stop processing job')
+            raise e
+
+def get_suggest_baseline_request(event):
+    props = event['ResourceProperties']
 
     # TODO: Allow specifying format in future
     dataset_format = { 'csv': {'header': True, 'output_columns_position': 'START'}}
@@ -124,16 +163,16 @@ def create_processing_job(event):
         "ProcessingOutputConfig": {
             "Outputs": [
                 {
-                    "OutputName": "monitoring_output",
+                    "OutputName": "monitoring_output", # Validate this is correct
                     "S3Output": {
-                        "S3Uri": props['BaselineReportsUri'],
+                        "S3Uri": props['BaselineResultsUri'],
                         "LocalPath": "/opt/ml/processing/output",
                         "S3UploadMode": "EndOfJob"
                     }
                 }
             ]
         },
-        "ProcessingJobName": processing_job_name,
+        "ProcessingJobName": props["ProcessingJobName"],
         "ProcessingResources": {
             "ClusterConfig": {
                 "InstanceCount": 1,
@@ -156,22 +195,18 @@ def create_processing_job(event):
         "RoleArn": props["PassRoleArn"],
     }
 
-    logger.info('Creating processing job with name: %s', processing_job_name)
+    # Add optional pre/processing scripts
 
-    response = sm.create_processing_job(**request)
+    if props.get('RecordPreprocessorSourceUri'):
+        env = request["Environment"]
+        env["record_preprocessor_script"] = props['RecordPreprocessorSourceUri']
+    if props.get('PostAnalyticsProcessorSourceUri'):
+        env = request["Environment"]
+        env["post_analytics_processor_script"] = props['PostAnalyticsProcessorSourceUri']
 
-    # Update Arn
-    helper.Data['ProcessingJobName'] = processing_job_name
-    helper.Data['Arn'] = response["ProcessingJobArn"]
-    return helper.Data['Arn']
+    # Build the constraints and statistics URI from the results URI
 
-def delete_processing_job(processing_job_name):
-    logger.info('Deleting processing job: %s', processing_job_name)
-    try:
-        sm.delete_processing_job(MonitoringScheduleName=processing_job_name)
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFound':
-            logger.info('Resource not found, nothing to delete')
-        else:
-            logger.error('Unexpected error while trying to delete monitoring processing job')
-            raise e
+    constraints_uri = props["BaselineResultsUri"] + '/constraints.json'
+    statistics_uri = props["BaselineResultsUri"] + '/statistics.json'
+
+    return request, constraints_uri, statistics_uri

@@ -55,7 +55,7 @@ def is_training_job_ready(training_job_name):
         helper.Data['TrainingJobName'] = training_job_name
         helper.Data['Arn'] = response['TrainingJobArn'] 
         is_ready = True
-    elif status == 'InProgress':
+    elif status == 'InProgress' or status == 'Stopping':
         logger.info('Training job (%s) still in progress (%s), waiting and polling again...', 
             training_job_name, response['SecondaryStatus'])
     else:

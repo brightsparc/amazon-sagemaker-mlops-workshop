@@ -21,18 +21,18 @@ Parameters:
   DataCaptureUri:
     Type: String
     Description: The s3 uri to upload data capture logs
-  BaselineConstraintsUri:
+  MonitoringRoleArn:
     Type: String
-    Description: The s3 uri to for constraints
-  BaselineStatisticsUri:
+    Description: The role for executing the monitoring schedule
+  BaselineInputUri:
     Type: String
-    Description: The s3 uri for statistics
+    Description: The s3 uri for baseline input
+  BaselineResultUri:
+    Type: String
+    Description: The s3 uri for storing baseline results
   ScheduleReportsUri:
     Type: String
     Description: The s3 uri to schedule reports
-  ScheduleRoleArn:
-    Type: String
-    Description: The role for executing the monitoring schedule
   ScheduleMetricName:
     Type: String
     Description: The metric to alarm on for schedule
@@ -210,18 +210,28 @@ Resources:
           DATA_CAPTURE_URI: !Ref DataCaptureUri
       Description: "Perform checks post-shifting traffic to lambda"
 
+  SagemakerSuggestBaseline:
+    Type: Custom::SuggestBaseline
+    Properties:
+      ServiceToken:
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-suggest-baseline'
+      ProcessingJobName: !Sub mlops-mb-${ModelName}-prd-${TrainJobId}
+      BaselineInputUri: !Ref BaselineInputUri
+      BaselineResultsUri: !Ref BaselineResultsUri
+      PassRoleArn: !Ref MonitoringRoleArn
+
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
     Properties:
       ServiceToken: 
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-monitoring-schedule'
       EndpointName: !GetAtt Endpoint.EndpointName
-      ScheduleName: !Sub mlops-mon-${ModelName}-prd-${TrainJobId}
-      BaselineConstraintsUri: !Ref BaselineConstraintsUri
-      BaselineStatisticsUri: !Ref BaselineStatisticsUri
+      ScheduleName: !Sub mlops-ms-${ModelName}-prd-${TrainJobId}
+      BaselineConstraintsUri: !GetAtt SagemakerSuggestBaseline.BaselineConstraintsUri
+      BaselineStatisticsUri: !GetAtt SagemakerSuggestBaseline.BaselineStatisticsUri
       OutputS3URI: !Ref ScheduleReportsUri
-      PassRoleArn: !Ref ScheduleRoleArn
-    DependsOn: SagemakerDataCapture
+      PassRoleArn: !Ref MonitoringRoleArn
+    DependsOn: SagemakerDataCapture # Wait until endpoint is update for data capture
 
   SagemakerScheduleAlarm:
     Type: "AWS::CloudWatch::Alarm"

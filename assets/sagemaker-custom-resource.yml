@@ -1,16 +1,6 @@
 Description: Template for sagemaker custom resources
 Transform: AWS::Serverless-2016-10-31
 Resources:
-  MonitoringScheduleFunction:
-    Type: AWS::Serverless::Function
-    Properties:
-      FunctionName: mlops-cfn-monitoring-schedule
-      CodeUri: ../cfn
-      Handler: sagemaker_monitoring_schedule.lambda_handler
-      Runtime: python3.7
-      Role: !GetAtt SagemakerCustomResourceRole.Arn
-      Description: "Creates a SageMaker Monitoring Schedule for a given Endpoint"
-
   EnableDataCaptureFunction:
     Type: AWS::Serverless::Function
     Properties:
@@ -20,6 +10,26 @@ Resources:
       Runtime: python3.7
       Role: !GetAtt SagemakerCustomResourceRole.Arn
       Description: "Enables data capture on a given SageMaker Endpoint"
+
+  SuggestBaselineFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: mlops-cfn-suggest-baseline
+      CodeUri: ../cfn
+      Handler: sagemaker_suggest_baseline.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt SagemakerCustomResourceRole.Arn
+      Description: "Creates a SageMaker Monitoring Baseline for a given input"
+
+  MonitoringScheduleFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: mlops-cfn-monitoring-schedule
+      CodeUri: ../cfn
+      Handler: sagemaker_monitoring_schedule.lambda_handler
+      Runtime: python3.7
+      Role: !GetAtt SagemakerCustomResourceRole.Arn
+      Description: "Creates a SageMaker Monitoring Schedule for a given Endpoint"
 
   TrainingWaiterFunction:
     Type: AWS::Serverless::Function
@@ -62,6 +72,9 @@ Resources:
                   - sagemaker:CreateMonitoringSchedule
                   - sagemaker:DeleteMonitoringSchedule
                   - sagemaker:DescribeMonitoringSchedule
+                  - sagemaker:DescribeProcessingJob
+                  - sagemaker:CreateProcessingJob
+                  - sagemaker:StopProcessingJob
                 Resource: "*"
               - 
                 Sid: AllowLambda
