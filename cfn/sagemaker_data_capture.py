@@ -43,6 +43,19 @@ def poll_create(event, context):
     logger.info('Polling for update of endpoint: %s', endpoint_name)
     return is_endpoint_ready(endpoint_name)
 
+@helper.poll_delete
+def poll_delete(event, context):
+    """
+    Return true if the resource has been deleted.
+    """
+    endpoint_name = get_endpoint_name(event)
+    logger.info('Polling for deletion of endpoint: %s', endpoint_name)
+    try:
+        is_endpoint_ready(endpoint_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFound':
+            return True
+
 # Helper Functions
 
 def get_endpoint_name(event):

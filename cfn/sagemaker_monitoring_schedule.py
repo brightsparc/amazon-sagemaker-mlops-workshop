@@ -25,6 +25,22 @@ def create_handler(event, context):
     """
     return create_monitoring_schedule(event)
 
+@helper.update
+def update_handler(event, context):
+    """
+    If this is an update for new schedule then call create_handler
+    """
+    schedule_name = get_schedule_name(event)
+    logger.info('Updating schedule: %s', schedule_name)
+    try:
+        is_schedule_ready(schedule_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFound':
+            return create_handler(event, context)
+        else:
+            logger.error('Unexpected error while trying to delete endpoint config')
+            raise e
+
 @helper.delete
 def delete_handler(event, context):
     """
@@ -44,21 +60,18 @@ def poll_create(event, context):
     logger.info('Polling for creation of schedule: %s', schedule_name)
     return is_schedule_ready(schedule_name)
 
-@helper.update
-def update_handler(event, context):
+@helper.poll_delete
+def poll_delete(event, context):
     """
-    If this is an update for new schedule then call create_handler
+    Return true if the resource has been deleted.
     """
     schedule_name = get_schedule_name(event)
-    logger.info('Updating schedule: %s', schedule_name)
+    logger.info('Polling for deletion of schedule: %s', schedule_name)
     try:
         is_schedule_ready(schedule_name)
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFound':
-            return create_handler(event, context)
-        else:
-            logger.error('Unexpected error while trying to delete endpoint config')
-            raise e
+            return True
 
 # Helper Functions
 
@@ -202,5 +215,7 @@ def delete_monitoring_schedule(schedule_name):
         if e.response['Error']['Code'] == 'ResourceNotFound':
             logger.info('Resource not found, nothing to delete')
         else:
+            # NOTE: Delete schedule can fail "can't delete schedule as it has in-progress executions"
             logger.error('Unexpected error while trying to delete monitoring schedule')
             raise e
+        
