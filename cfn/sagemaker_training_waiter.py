@@ -44,18 +44,21 @@ def get_training_job_name(event):
     return event['ResourceProperties']['TrainingJobName']
 
 def is_training_job_ready(training_job_name):
+    is_ready = False
     response = sm.describe_training_job(TrainingJobName=training_job_name)
     status = response['TrainingJobStatus']
 
     if status == 'Completed':
         logger.info('Training Job (%s) is Completed', training_job_name)
+        
         # Return additional info
+        helper.Data['TrainingJobName'] = training_job_name
         helper.Data['Arn'] = response['TrainingJobArn'] 
-        return True
+        is_ready = True
     elif status == 'InProgress':
         logger.info('Training job (%s) still in progress (%s), waiting and polling again...', 
             training_job_name, response['SecondaryStatus'])
     else:
         raise Exception('Training job ({}) has unexpected status: {}'.format(training_job_name, status))
 
-    return False
+    return is_ready

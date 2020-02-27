@@ -33,7 +33,6 @@ def delete_handler(event, context):
     schedule_name = get_schedule_name(event)
     delete_monitoring_schedule(schedule_name)
 
-
 @helper.poll_create
 @helper.poll_update
 def poll_create(event, context):
@@ -48,9 +47,18 @@ def poll_create(event, context):
 @helper.update
 def update_handler(event, context):
     """
-    Not currently implemented but crhelper will throw an error if it isn't added
+    If this is an update for new schedule then call create_handler
     """
-    pass
+    schedule_name = get_schedule_name(event)
+    logger.info('Updating schedule: %s', schedule_name)
+    try:
+        is_schedule_ready(schedule_name)
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ResourceNotFound':
+            return create_handler(event, context)
+        else:
+            logger.error('Unexpected error while trying to delete endpoint config')
+            raise e
 
 # Helper Functions
 
@@ -96,6 +104,7 @@ def create_monitoring_schedule(event):
             MonitoringScheduleConfig=monitoring_schedule_config)
 
         # Updating the monitoring schedule arn
+        helper.Data['ScheduleName'] = schedule_name
         helper.Data['Arn'] = response["MonitoringScheduleArn"]
         return helper.Data['Arn']
     except ClientError as e:
@@ -106,16 +115,19 @@ def create_monitoring_schedule(event):
         raise e
 
 def is_schedule_ready(schedule_name):
+    is_ready = False
+
     schedule = sm.describe_monitoring_schedule(MonitoringScheduleName=schedule_name)
     status = schedule['MonitoringScheduleStatus']
     if status == 'Scheduled':
         logger.info('Monitoring schedule (%s) is ready', schedule_name)
-        return True
+        is_ready = True
     elif status == 'Pending':
         logger.info('Monitoring schedule (%s) still creating, waiting and polling again...', schedule_name)
     else:
         raise Exception('Monitoring schedule ({}) has unexpected status: {}'.format(schedule_name, status))
-    return False
+
+    return is_ready
 
 def create_monitoring_schedule_config(event):
     props = event['ResourceProperties']

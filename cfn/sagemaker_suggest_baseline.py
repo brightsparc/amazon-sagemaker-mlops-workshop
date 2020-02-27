@@ -161,6 +161,7 @@ def create_processing_job(event):
     response = sm.create_processing_job(**request)
 
     # Update Arn
+    helper.Data['ProcessingJobName'] = processing_job_name
     helper.Data['Arn'] = response["ProcessingJobArn"]
     return helper.Data['Arn']
 

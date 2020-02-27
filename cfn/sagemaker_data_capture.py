@@ -25,7 +25,6 @@ def create_handler(event, context):
     """
     return update_endpoint(event)
 
-
 @helper.delete
 def delete_handler(event, context):
     """
@@ -113,6 +112,7 @@ def update_endpoint(event):
         # Create the endpoint config
         logger.info('Create endpoint config: %s', new_config_name)
         response = sm.create_endpoint_config(**request)
+        helper.Data['EndpointName'] = endpoint_name
         helper.Data['Arn'] = response["EndpointConfigArn"]
 
         # Update endpoint to point to new config
