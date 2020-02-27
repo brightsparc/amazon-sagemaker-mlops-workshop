@@ -15,9 +15,6 @@ Parameters:
   ModelName:
     Type: String
     Description: Name of the model
-  DatasetKeyPath:
-    Type: String
-    Description: Path of the S3 bucket that CodePipeline should find a sagemaker jobfile
 
 Resources:
   
@@ -142,7 +139,7 @@ Resources:
                 S3Bucket: 
                   !Sub mlops-${AWS::Region}-${AWS::AccountId}
                 S3ObjectKey: 
-                  !Sub ${DatasetKeyPath}/trainingjob.zip
+                  !Sub ${ModelName}/source/trainingjob.zip
               RunOrder: 1
         -
           Name: Train
