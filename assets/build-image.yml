@@ -3,6 +3,9 @@
 
 Description: Create a CodePipeline for creating a Docker base image for training/serving models
 Parameters:
+  ModelName:
+    Type: String
+    Description: Name of the model and CodeCommit repo
   RepoBranchName:
     Type: String
     Description: Name of the branch the code is located
@@ -13,8 +16,9 @@ Parameters:
     Type: String
     Description: Name of the ECR image tag
     Default: latest
-
+  
 Resources:
+
   BuildImageProject:
     Type: AWS::CodeBuild::Project
     Properties:
@@ -74,7 +78,8 @@ Resources:
               Configuration:
                 BranchName: 
                   Ref: RepoBranchName
-                RepositoryName: mlops
+                RepositoryName: 
+                  Ref: ModelName
               RunOrder: 1
         -
           Name: Build
