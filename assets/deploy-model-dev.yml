@@ -36,10 +36,10 @@ Resources:
         InstanceType: ml.t2.large
         ModelName: !GetAtt Model.ModelName
         VariantName: AllTraffic
-      EndpointConfigName: !Sub mlops-ec-${ModelName}-dev-${TrainJobId}
+      EndpointConfigName: !Sub mlops-${ModelName}-dec-${TrainJobId}
       Tags:
         - Key: Name
-          Value: !Sub mlops-ec-${ModelName}-dev-${TrainJobId}
+          Value: !Sub mlops-${ModelName}-dec-${TrainJobId}
     DependsOn: Model
 
   Endpoint:

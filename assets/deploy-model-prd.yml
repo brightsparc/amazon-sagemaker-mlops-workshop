@@ -27,7 +27,7 @@ Parameters:
   BaselineInputUri:
     Type: String
     Description: The s3 uri for baseline input
-  BaselineResultUri:
+  BaselineResultsUri:
     Type: String
     Description: The s3 uri for storing baseline results
   ScheduleReportsUri:
@@ -60,10 +60,10 @@ Resources:
         InstanceType: ml.c5.large
         ModelName: !GetAtt Model.ModelName
         VariantName: AllTraffic
-      EndpointConfigName: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+      EndpointConfigName: !Sub mlops-${ModelName}-pec-${TrainJobId}
       Tags:
         - Key: Name
-          Value: !Sub mlops-ec-${ModelName}-prd-${TrainJobId}
+          Value: !Sub mlops-${ModelName}-pec-${TrainJobId}
 
   Endpoint:
     Type: "AWS::SageMaker::Endpoint"
@@ -79,9 +79,9 @@ Resources:
     Type: Custom::EnableDataCapture
     Properties:
       ServiceToken: 
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-enable-data-capture'
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-enable-data-capture'
       EndpointName: !GetAtt Endpoint.EndpointName
-      EndpointConfigName: !Sub mlops-dc-${ModelName}-prd-${TrainJobId}
+      EndpointConfigName: !Sub mlops-${ModelName}-pdc-${TrainJobId}
       DataCaptureUri: !Ref DataCaptureUri
     DependsOn: Endpoint
 
@@ -214,8 +214,8 @@ Resources:
     Type: Custom::SuggestBaseline
     Properties:
       ServiceToken:
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-suggest-baseline'
-      ProcessingJobName: !Sub mlops-mb-${ModelName}-prd-${TrainJobId}
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-suggest-baseline'
+      ProcessingJobName: !Sub mlops-${ModelName}-pbl-${TrainJobId}
       BaselineInputUri: !Ref BaselineInputUri
       BaselineResultsUri: !Ref BaselineResultsUri
       PassRoleArn: !Ref MonitoringRoleArn
@@ -224,9 +224,9 @@ Resources:
     Type: Custom::MonitoringSchedule
     Properties:
       ServiceToken: 
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-monitoring-schedule'
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-monitoring-schedule'
       EndpointName: !GetAtt Endpoint.EndpointName
-      ScheduleName: !Sub mlops-ms-${ModelName}-prd-${TrainJobId}
+      ScheduleName: !Sub mlops-${ModelName}-pms-${TrainJobId}
       BaselineConstraintsUri: !GetAtt SagemakerSuggestBaseline.BaselineConstraintsUri
       BaselineStatisticsUri: !GetAtt SagemakerSuggestBaseline.BaselineStatisticsUri
       OutputS3URI: !Ref ScheduleReportsUri
