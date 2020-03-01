@@ -19,15 +19,13 @@ Parameters:
     Type: String
     Description: Name of the ECR repo / branch for model image
     Default: latest
-    MinLength: 1
-    MaxLength: 24
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   ModelName:
     Type: String
     Description: Name of the model / source code repository
-    Default: text-classification
+    Default: text-multiclass
     MinLength: 1
-    MaxLength: 24
+    MaxLength: 15 # Limited to this due to mlops-{model}-{dev/prd}-{guid}
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   NotebookInstanceType:
     Type: String

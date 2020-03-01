@@ -48,12 +48,13 @@ Resources:
           import hashlib
 
           s3 = boto3.client('s3')
-          sagemaker = boto3.client('sagemaker')
+          sm = boto3.client('sagemaker')
           codepipeline = boto3.client('codepipeline')
 
           def lambda_handler(event, context):
               pipeline_name='${AWS::StackName}'
               
+              model_name = '${ModelName}'
               jobId = event["CodePipeline.job"]["id"]
               accountId = event["CodePipeline.job"]["accountId"]
               trainingJob = None
@@ -71,10 +72,26 @@ Resources:
                   if trainingJob is None:
                     raise(Exception("trainingjob.json wasn't found"))
 
+                  try:
+                      response = sm.create_experiment(ExperimentName=model_name)
+                      print('created exp', response)
+                  except Exception as e:
+                      pass
+                  try:
+                      response = sm.create_trial(ExperimentName=model_name,TrialName=executionId)
+                      print('created trial', response)
+                  except Exception as e:
+                      pass
+
                   trainingJob['TrainingJobName'] = 'mlops-${ModelName}-%s' % executionId
+                  trainingJob['ExperimentConfig'] = {
+                    'ExperimentName': model_name,
+                    'TrialName': executionId,
+                    'TrialComponentDisplayName': 'Training'
+                  }
                   trainingJob['Tags'].append({'Key': 'jobid', 'Value': jobId})
                   print('Start training job %s' % (trainingJob['TrainingJobName']))      
-                  sagemaker.create_training_job(**trainingJob)
+                  sm.create_training_job(**trainingJob)
 
                   params_training_job = {
                       "Parameters": {
