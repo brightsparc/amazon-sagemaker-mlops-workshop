@@ -1,10 +1,10 @@
-Description: Template for sagemaker custom resources
+Description: Template for sagemaker cloud formation custom resources
 Transform: AWS::Serverless-2016-10-31
 Resources:
   EnableDataCaptureFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: mlops-cfn-enable-data-capture
+      FunctionName: sagemaker-cfn-enable-data-capture
       CodeUri: ../cfn
       Handler: sagemaker_data_capture.lambda_handler
       Runtime: python3.7
@@ -14,7 +14,7 @@ Resources:
   SuggestBaselineFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: mlops-cfn-suggest-baseline
+      FunctionName: sagemaker-cfn-suggest-baseline
       CodeUri: ../cfn
       Handler: sagemaker_suggest_baseline.lambda_handler
       Runtime: python3.7
@@ -24,7 +24,7 @@ Resources:
   MonitoringScheduleFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: mlops-cfn-monitoring-schedule
+      FunctionName: sagemaker-cfn-monitoring-schedule
       CodeUri: ../cfn
       Handler: sagemaker_monitoring_schedule.lambda_handler
       Runtime: python3.7
@@ -34,7 +34,7 @@ Resources:
   TrainingWaiterFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: mlops-cfn-training-job-waiter
+      FunctionName: sagemaker-cfn-training-job-waiter
       CodeUri: ../cfn
       Handler: sagemaker_training_waiter.lambda_handler
       Runtime: python3.7
@@ -44,7 +44,7 @@ Resources:
   SagemakerCustomResourceRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: mlops-cfn-sagemaker-custom-resource
+      RoleName: sagemaker-cfn-custom-resource
       AssumeRolePolicyDocument:
         Statement:
           - Action:

@@ -3,10 +3,10 @@
 
 Description: Create a CodePipeline for creating a Docker base image for training/serving models
 Parameters:
-  ModelName:
+  CodeRepoName:
     Type: String
-    Description: Name of the model and CodeCommit repo
-  RepoBranchName:
+    Description: Name of the CodeCommit repo
+  CodeBranchName:
     Type: String
     Description: Name of the branch the code is located
   ImageRepoName:
@@ -16,15 +16,24 @@ Parameters:
     Type: String
     Description: Name of the ECR image tag
     Default: latest
+  BaseRepoName:
+    Type: String
+    Description: Optional Name of the ECR repo without the image name is based on
+  ArtifactBucket:
+    Type: String
+    Description: The bucket for pipeline artifacts
+  MLOpsRoleArn:
+    Type: String
+    Description: Role for CodeBuild and CodePipeline 
   
 Resources:
 
   BuildImageProject:
     Type: AWS::CodeBuild::Project
     Properties:
-      Name: !Sub mlops-buildimage-${AWS::StackName}
+      Name: !Sub ${AWS::StackName}-buildimage
       Description: Build a Model Image
-      ServiceRole: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOpsCodeBuild
+      ServiceRole: !Ref MLOpsRoleArn
       Artifacts:
         Type: CODEPIPELINE
       Source:
@@ -35,32 +44,32 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/docker:17.09.0
         EnvironmentVariables:
+          - Name: BASE_REPO_NAME
+            Value: !Ref BaseRepoName
           - Name: IMAGE_REPO_NAME
-            Value:
-              Ref: ImageRepoName
+            Value: !Ref ImageRepoName
           - Name: IMAGE_TAG
-            Value:
-              Ref: ImageTagName
+            Value: !Ref ImageTagName
           - Name: AWS_ACCOUNT_ID
             Value: !Sub ${AWS::AccountId}
           - Name: AWS_DEFAULT_REGION
             Value: !Sub ${AWS::Region}
           - Name: TEMPLATE_BUCKET
-            Value: !Sub mlops-${AWS::Region}-${AWS::AccountId}
+            Value: !Ref ArtifactBucket
           - Name: TEMPLATE_PREFIX
             Value: codebuild
       Tags:
         - Key: Name
-          Value: !Sub mlops-buildimage-${AWS::StackName}
+          Value: !Sub ${AWS::StackName}-buildimage
 
   DeployPipeline:
     Type: "AWS::CodePipeline::Pipeline"
     Properties:
-      Name: !Sub mlops-${AWS::StackName}
-      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+      Name: !Sub ${AWS::StackName}
+      RoleArn: !Ref MLOpsRoleArn
       ArtifactStore:
           Type: S3
-          Location: !Sub mlops-${AWS::Region}-${AWS::AccountId}
+          Location: !Ref ArtifactBucket
       Stages:
         -
           Name: Source
@@ -77,9 +86,9 @@ Resources:
                   Name: ModelSourceOutput
               Configuration:
                 BranchName: 
-                  Ref: RepoBranchName
+                  Ref: CodeBranchName
                 RepositoryName: 
-                  Ref: ModelName
+                  Ref: CodeRepoName
               RunOrder: 1
         -
           Name: Build

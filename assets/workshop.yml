@@ -4,16 +4,16 @@ Parameters:
   BaseRepoName:
     Type: String
     Description: Name of the ECR repo / branch for base image
-    Default: ludwig-text
+    Default: ludwig-base
     MinLength: 1
-    MaxLength: 24
+    MaxLength: 63
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   ImageRepoName:
     Type: String
-    Description: Name of the ECR repo / branch for model image
-    Default: ludwig-bank
+    Description: Name of the ECR repo / branch for base image
+    Default: ludwig-model
     MinLength: 1
-    MaxLength: 24
+    MaxLength: 63
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   ImageTagName:
     Type: String
@@ -24,14 +24,14 @@ Parameters:
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   ModelName:
     Type: String
-    Description: Name of the model
-    Default: banking
+    Description: Name of the model / source code repository
+    Default: text-classification
     MinLength: 1
     MaxLength: 24
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   NotebookInstanceType:
     Type: String
-    Default: ml.t3.medium
+    Default: ml.m5.xlarge
     AllowedValues:
       - ml.t3.medium
       - ml.t3.large
@@ -39,40 +39,31 @@ Parameters:
       - ml.m5.large
       - ml.m5.xlarge
       - ml.m5.2xlarge
-    Description: Enter ml instance size for notebook. Default is t2.micro.
+    Description: Enter ml instance size for notebook. Default is ml.m5.xlarge
   DatasetBucket:
     Type: String
     Description: The source dataset bucket
     Default: open-banking-classificaiton-ap-southeast-2
-    MinLength: 1
-    MaxLength: 24
-    AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
   DatasetPrefix:
     Type: String
-    Description: The s3 data source which should contain '/train/' and '/validation/' keys
-    Default: data/
-    MinLength: 1
-    MaxLength: 24
-    AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*
+    Description: The path to data folder containing 'train', 'validation' and 'test' inputs.
+    Default: data
 
 Resources:
   MLOpsBaseImageRepo:
     Type: AWS::ECR::Repository
     Properties: 
-      RepositoryName: !Ref BaseRepoName
+      RepositoryName: !Sub ${AWS::StackName}-${BaseRepoName}
 
   MLOpsModelRepo:
     Type: AWS::ECR::Repository
     Properties: 
-      RepositoryName: !Ref ImageRepoName
+      RepositoryName: !Sub ${AWS::StackName}-${ImageRepoName}
 
   MLOpsBucket:
     Type: AWS::S3::Bucket
     Properties: 
-      BucketName: !Sub mlops-${AWS::Region}-${AWS::AccountId}
-      Tags:
-        - Key: Name
-          Value: !Sub mlops-${AWS::Region}-${AWS::AccountId}
+      BucketName: !Sub ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}
       AccessControl: Private
       VersioningConfiguration:
         Status: Enabled
@@ -81,22 +72,22 @@ Resources:
     Type: AWS::CodeCommit::Repository
     Properties: 
       RepositoryDescription: Repository for the ML models/images code
-      RepositoryName: !Ref ModelName
-      
-  IAWorkshopNotebookInstance:
+      RepositoryName: !Sub ${AWS::StackName}-${ModelName}
+
+  NotebookInstance:
     Type: "AWS::SageMaker::NotebookInstance"
     Properties:
-      NotebookInstanceName: amazon-sagemaker-mlops
+      NotebookInstanceName: !Sub ${AWS::StackName}-notebook
       InstanceType: !Ref NotebookInstanceType
       RoleArn: !GetAtt MLOps.Arn
-      LifecycleConfigName: !GetAtt IAWorkshopNotebookInstanceLifecycleConfig.NotebookInstanceLifecycleConfigName
+      LifecycleConfigName: !GetAtt NotebookInstanceLifecycleConfig.NotebookInstanceLifecycleConfigName
     DependsOn: 
-      - IAWorkshopNotebookInstanceLifecycleConfig
+      - NotebookInstanceLifecycleConfig
       - MLOps
       - MLOpsBucket
       - MLOpsRepo
 
-  IAWorkshopNotebookInstanceLifecycleConfig:
+  NotebookInstanceLifecycleConfig:
     Type: "AWS::SageMaker::NotebookInstanceLifecycleConfig"
     Properties:
       NotebookInstanceLifecycleConfigName: !Sub ${AWS::StackName}-lifecycle-config
@@ -106,11 +97,11 @@ Resources:
               Fn::Sub: |
                 #!/bin/bash
 
-                # set some ENV vars for the BASE_REPO, IMAGE_REPO and MODEL_NAME
                 touch /etc/profile.d/jupyter-env.sh
-                echo "export REGION=${AWS::Region}" >> /etc/profile.d/jupyter-env.sh
-                echo "export BASE_REPO=${BaseRepoName}" >> /etc/profile.d/jupyter-env.sh
-                echo "export IMAGE_REPO=${ImageRepoName}" >> /etc/profile.d/jupyter-env.sh
+                echo "export ARTIFACT_BUCKET=${MLOpsBucket}" >> /etc/profile.d/jupyter-env.sh
+                echo "export PIPELINE_NAME=${AWS::StackName}-${ModelName}" >> /etc/profile.d/jupyter-env.sh
+                echo "export BASE_REPO=${MLOpsBaseImageRepo}" >> /etc/profile.d/jupyter-env.sh
+                echo "export IMAGE_REPO=${MLOpsModelRepo}" >> /etc/profile.d/jupyter-env.sh
                 echo "export IMAGE_TAG=${ImageTagName}" >> /etc/profile.d/jupyter-env.sh
                 echo "export MODEL_NAME=${ModelName}" >> /etc/profile.d/jupyter-env.sh
                 echo "export DATASET_BUCKET=${DatasetBucket}" >> /etc/profile.d/jupyter-env.sh
@@ -124,7 +115,7 @@ Resources:
                 cp /root/.gitconfig /home/ec2-user/ && chown ec2-user:ec2-user /home/ec2-user/.gitconfig
 
                 echo "Now let's prepare our code commit repo"
-                git clone https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${ModelName} /tmp/mlops-temp
+                git clone ${MLOpsRepo.CloneUrlHttp} /tmp/mlops-temp
 
                 echo "First the master branch"
                 cd /tmp/mlops-temp
@@ -149,9 +140,9 @@ Resources:
 
                 echo "Now let's clone both branches we just created"
                 mkdir -p /home/ec2-user/SageMaker/mlops-workshop-images
-                git clone --single-branch -b ${BaseRepoName} https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${ModelName}  /home/ec2-user/SageMaker/mlops-workshop-images/${BaseRepoName}
-                git clone --single-branch -b ${ImageRepoName} https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${ModelName}  /home/ec2-user/SageMaker/mlops-workshop-images/${ImageRepoName}
-                git clone --single-branch -b master https://git-codecommit.${AWS::Region}.amazonaws.com/v1/repos/${ModelName}  /home/ec2-user/SageMaker/mlops-workshop-images/master
+                git clone --single-branch -b ${BaseRepoName} ${MLOpsRepo.CloneUrlHttp}  /home/ec2-user/SageMaker/mlops-workshop-images/${MLOpsBaseImageRepo}
+                git clone --single-branch -b ${ImageRepoName} ${MLOpsRepo.CloneUrlHttp}  /home/ec2-user/SageMaker/mlops-workshop-images/${MLOpsModelRepo}
+                git clone --single-branch -b master ${MLOpsRepo.CloneUrlHttp} /home/ec2-user/SageMaker/mlops-workshop-images/master
 
                 echo "Finally, let's clone and build an image for testing codebuild locally"
                 git clone https://github.com/aws/aws-codebuild-docker-images.git /tmp/aws-codebuild
@@ -163,64 +154,58 @@ Resources:
 
                 cd /home/ec2-user/SageMaker/mlops-workshop
 
-                echo "Install custom resource helper, and create the sagemaker custom resource stack"
+                echo "Create code pipeline for base and image build"
+
+                aws cloudformation deploy --template-file assets/build-image.yml \
+                  --stack-name "${AWS::StackName}-${BaseRepoName}" --parameter-overrides \
+                  CodeRepoName="${AWS::StackName}-${ModelName}" \
+                  CodeBranchName="${BaseRepoName}" \
+                  BaseRepoName="" \
+                  ImageRepoName="${MLOpsBaseImageRepo}" \
+                  ImageTagName="${ImageTagName}" \
+                  ArtifactBucket="${MLOpsBucket}" \
+                  MLOpsRoleArn="${MLOps.Arn}"
+
+                aws cloudformation deploy --template-file assets/build-image.yml \
+                  --stack-name "${AWS::StackName}-${ImageRepoName}" --parameter-overrides \
+                  CodeRepoName="${AWS::StackName}-${ModelName}" \
+                  CodeBranchName="${ImageRepoName}" \
+                  BaseRepoName="${MLOpsBaseImageRepo}" \
+                  ImageRepoName="${MLOpsModelRepo}" \
+                  ImageTagName="${ImageTagName}" \
+                  ArtifactBucket="${MLOpsBucket}" \
+                  MLOpsRoleArn="${MLOps.Arn}"
+
+                echo "Create code pipeline for train model"
+
+                aws cloudformation deploy --template-file assets/train-model-pipeline.yml \
+                  --stack-name "${AWS::StackName}-${ModelName}" --parameter-overrides \
+                  CodeRepoName="${AWS::StackName}-${ModelName}" \
+                  CodeBranchName="${BaseRepoName}" \
+                  ImageRepoName="${MLOpsBaseImageRepo}" \
+                  ImageTagName="${ImageTagName}" \
+                  ModelName="${ModelName}" \
+                  ArtifactBucket="${MLOpsBucket}" \
+                  MLOpsRoleArn="${MLOps.Arn}"
+
+                echo "Install custom resource helper, and deploy the sagemaker custom resource stack"
 
                 pip install -t ./cfn crhelper
 
-                aws cloudformation create-stack --stack-name sagemaker-custom-resource \
-                --template-body file://assets/sagemaker-custom-resource.yml \
+                aws cloudformation package --template-file assets/sagemaker-custom-resource.yml \
+                  --output-template-file assets/sagemaker-custom-resource-packaged.yml \
+                  --s3-bucket ${MLOpsBucket}
 
-                parameters="ParameterKey=ModelName,ParameterValue=${ModelName}"
-                parameters="$parameters ParameterKey=RepoBranchName,ParameterValue=%"
-                parameters="$parameters ParameterKey=ImageRepoName,ParameterValue=%s"
-                parameters="$parameters ParameterKey=ImageTagName,ParameterValue=${ImageTagName}"
+                aws cloudformation deploy --stack-name sagemaker-custom-resource \
+                  --template-file assets/sagemaker-custom-resource-packaged.yml \
+                  --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
 
-                echo "Create code pipeline repos for image build and train model"
-
-                aws cloudformation create-stack --stack-name mlops-repo-${BaseRepoName} \
-                  --template-body file://assets/build-image.yml \
-                  --parameters $(printf "$parameters" "${BaseRepoName}" "${BaseRepoName}" )
-
-                aws cloudformation create-stack --stack-name mlops-repo-${ImageRepoName} \
-                  --template-body file://assets/build-image.yml \
-                  --parameters $(printf "$parameters" "${ImageRepoName}" "${ImageRepoName}" )
-
-                aws cloudformation create-stack --stack-name mlops-pipeline-${ModelName} \
-                  --template-body file://assets/train-model-pipeline.yml \
-                  --parameters $(printf "$parameters" "master" "${ImageRepoName}" )
-                
                 echo "Done! Let's do some stuff with this env"
-
-  MLOpsCodeBuild:
-    Type: "AWS::IAM::Role"
-    Properties: 
-      RoleName: MLOpsCodeBuild
-      AssumeRolePolicyDocument: 
-        Version: "2012-10-17"
-        Statement: 
-          - 
-            Effect: "Allow"
-            Principal: 
-              Service: 
-                - "codebuild.amazonaws.com"
-            Action: 
-              - "sts:AssumeRole"
-      Path: "/"
-      Policies: 
-        - 
-          PolicyName: "Admin"
-          PolicyDocument: 
-            Version: "2012-10-17"
-            Statement: 
-              - 
-                Effect: "Allow"
-                Action: "*"
-                Resource: "*"
 
   MLOps:
     Type: "AWS::IAM::Role"
     Properties: 
-      RoleName: MLOps
+      RoleName: !Sub ${AWS::StackName}-MLOps
       AssumeRolePolicyDocument: 
         Version: "2012-10-17"
         Statement: 

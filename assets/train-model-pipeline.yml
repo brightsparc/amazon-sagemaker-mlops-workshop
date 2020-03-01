@@ -3,10 +3,10 @@
 
 Description: Create a CodePipeline for a Machine Learning Model
 Parameters:
-  ModelName:
+  CodeRepoName:
     Type: String
-    Description: Name of the model and CodeCommit repo
-  RepoBranchName:
+    Description: Name of the CodeCommit repo
+  CodeBranchName:
     Type: String
     Description: Name of the branch the code is located
   ImageRepoName:
@@ -16,16 +16,27 @@ Parameters:
     Type: String
     Description: Name of the ECR image tag
     Default: latest
+  ModelName:
+    Type: String
+    Description: Name of the model
+  ArtifactBucket:
+    Type: String
+    Description: The bucket for pipeline artifacts
+    Default: latest
+  MLOpsRoleArn:
+    Type: String
+    Description: Role for Lambda, CodePipeline and Cloudformation
+    Default: latest
 
 Resources:
   
   MLOpsLaunchJob:
     Type: "AWS::Lambda::Function"
     Properties: 
-      FunctionName: !Sub mlops-job-launcher-${ModelName}
+      FunctionName: !Sub ${AWS::StackName}-job-launcher
       Handler: index.lambda_handler
       MemorySize: 512
-      Role: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+      Role: !Ref MLOpsRoleArn 
       Runtime: python3.6
       Timeout: 60
       Code: 
@@ -38,7 +49,6 @@ Resources:
 
           s3 = boto3.client('s3')
           sagemaker = boto3.client('sagemaker')
-          cloudwatch_events = boto3.client('events')
           codepipeline = boto3.client('codepipeline')
 
           def lambda_handler(event, context):
@@ -119,16 +129,17 @@ Resources:
     Type: "AWS::CodePipeline::Pipeline"
     Properties:
       Name: !Sub ${AWS::StackName}
-      RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+      RoleArn: !Ref MLOpsRoleArn
       ArtifactStore:
           Type: S3
-          Location: !Sub mlops-${AWS::Region}-${AWS::AccountId}
+          Location:
+            Ref: ArtifactBucket
       Stages:
         -
           Name: Source
           Actions: 
             - 
-              Name: SourceAction
+              Name: GitSource
               ActionTypeId: 
                 Category: Source
                 Owner: AWS
@@ -138,9 +149,24 @@ Resources:
                 - Name: ModelSourceOutput
               Configuration:
                 BranchName: 
-                  Ref: RepoBranchName
+                  Ref: CodeBranchName
                 RepositoryName: 
-                  Ref: ModelName                
+                  Ref: CodeRepoName
+              RunOrder: 1
+            -
+              Name: EcrSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: ECR
+              OutputArtifacts:
+                - Name: EcrSourceOutput
+              Configuration:
+                ImageTag:
+                  Ref: ImageTagName
+                RepositoryName:
+                  Ref: ImageRepoName
               RunOrder: 1
         -
           Name: Train
@@ -173,7 +199,7 @@ Resources:
                 Provider: CloudFormation
               Configuration:
                 ActionMode: REPLACE_ON_FAILURE
-                RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+                RoleArn: !Ref MLOpsRoleArn
                 StackName: !Sub ${AWS::StackName}-wait-training-job
                 TemplateConfiguration: ModelTrainOutput::assets/training-job.json
                 TemplatePath: ModelSourceOutput::assets/wait-training-job.yml
@@ -193,7 +219,7 @@ Resources:
                 Provider: CloudFormation
               Configuration:
                 ActionMode: REPLACE_ON_FAILURE
-                RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+                RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM
                 StackName: !Sub ${AWS::StackName}-deploy-dev
                 TemplateConfiguration: ModelTrainOutput::assets/deploy-model-dev.json
@@ -226,7 +252,7 @@ Resources:
                 Provider: CloudFormation                
               Configuration:
                 ActionMode: REPLACE_ON_FAILURE
-                RoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+                RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
                 TemplateConfiguration: ModelTrainOutput::assets/deploy-model-prd.json
