@@ -23,7 +23,7 @@ Parameters:
   ModelName:
     Type: String
     Description: Name of the model / source code repository
-    Default: text-multiclass
+    Default: multiclass
     MinLength: 1
     MaxLength: 15 # Limited to this due to mlops-{model}-{dev/prd}-{guid}
     AllowedPattern: ^[a-zA-Z0-9](-*[a-zA-Z0-9])*

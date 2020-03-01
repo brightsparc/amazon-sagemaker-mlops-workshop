@@ -47,7 +47,8 @@ def delete_handler(event, context):
     Called when CloudFormation custom resource sends the delete event
     """
     schedule_name = get_schedule_name(event)
-    delete_monitoring_schedule(schedule_name)
+    if is_schedule_ready(schedule_name):
+        delete_monitoring_schedule(schedule_name)
 
 @helper.poll_create
 @helper.poll_update
@@ -68,7 +69,9 @@ def poll_delete(event, context):
     schedule_name = get_schedule_name(event)
     logger.info('Polling for deletion of schedule: %s', schedule_name)
     try:
-        is_schedule_ready(schedule_name)
+        # If still scheduled (due to being in progress on delete), delete again.
+        if is_schedule_ready(schedule_name):
+            delete_monitoring_schedule(schedule_name)
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFound':
             return True

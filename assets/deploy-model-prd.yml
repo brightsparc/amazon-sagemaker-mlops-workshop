@@ -87,6 +87,8 @@ Resources:
 
   DeploymentCompleteTopic:
     Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Sub mlops-${ModelName}-deployment
 
   ApiFunction:
     Type: AWS::Serverless::Function
