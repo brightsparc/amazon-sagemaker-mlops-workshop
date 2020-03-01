@@ -9,5 +9,5 @@ Resources:
     Type: Custom::TrainingJobWaiter
     Properties:
       ServiceToken: 
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:mlops-cfn-training-job-waiter'
+        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-training-job-waiter'
       TrainingJobName: !Ref TrainingJobName

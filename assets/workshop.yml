@@ -65,8 +65,6 @@ Resources:
     Properties: 
       BucketName: !Sub ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}
       AccessControl: Private
-      VersioningConfiguration:
-        Status: Enabled
 
   MLOpsRepo:
     Type: AWS::CodeCommit::Repository
@@ -97,16 +95,10 @@ Resources:
               Fn::Sub: |
                 #!/bin/bash
 
-                touch /etc/profile.d/jupyter-env.sh
-                echo "export ARTIFACT_BUCKET=${MLOpsBucket}" >> /etc/profile.d/jupyter-env.sh
-                echo "export PIPELINE_NAME=${AWS::StackName}-${ModelName}" >> /etc/profile.d/jupyter-env.sh
-                echo "export BASE_REPO=${MLOpsBaseImageRepo}" >> /etc/profile.d/jupyter-env.sh
-                echo "export IMAGE_REPO=${MLOpsModelRepo}" >> /etc/profile.d/jupyter-env.sh
-                echo "export IMAGE_TAG=${ImageTagName}" >> /etc/profile.d/jupyter-env.sh
-                echo "export MODEL_NAME=${ModelName}" >> /etc/profile.d/jupyter-env.sh
-                echo "export DATASET_BUCKET=${DatasetBucket}" >> /etc/profile.d/jupyter-env.sh
-                echo "export DATASET_PREFIX=${DatasetPrefix}" >> /etc/profile.d/jupyter-env.sh
-                initctl restart jupyter-server --no-wait
+                # This code was designed for a lab. You can reuse chunks of it but bear in mind
+                # that you need to prepare something different for production.
+
+                export HOME=/root/
 
                 echo "Configuring github for AWS credentials"
                 git config --global credential.helper '!aws codecommit credential-helper $@'
@@ -181,8 +173,8 @@ Resources:
                 aws cloudformation deploy --template-file assets/train-model-pipeline.yml \
                   --stack-name "${AWS::StackName}-${ModelName}" --parameter-overrides \
                   CodeRepoName="${AWS::StackName}-${ModelName}" \
-                  CodeBranchName="${BaseRepoName}" \
-                  ImageRepoName="${MLOpsBaseImageRepo}" \
+                  CodeBranchName="master" \
+                  ImageRepoName="${MLOpsModelRepo}" \
                   ImageTagName="${ImageTagName}" \
                   ModelName="${ModelName}" \
                   ArtifactBucket="${MLOpsBucket}" \
@@ -199,6 +191,19 @@ Resources:
                 aws cloudformation deploy --stack-name sagemaker-custom-resource \
                   --template-file assets/sagemaker-custom-resource-packaged.yml \
                   --capabilities CAPABILITY_NAMED_IAM CAPABILITY_AUTO_EXPAND
+
+                echo "Update environment variables for notebooks"
+
+                touch /etc/profile.d/jupyter-env.sh
+                echo "export ARTIFACT_BUCKET=${MLOpsBucket}" >> /etc/profile.d/jupyter-env.sh
+                echo "export PIPELINE_NAME=${AWS::StackName}-${ModelName}" >> /etc/profile.d/jupyter-env.sh
+                echo "export BASE_REPO=${MLOpsBaseImageRepo}" >> /etc/profile.d/jupyter-env.sh
+                echo "export IMAGE_REPO=${MLOpsModelRepo}" >> /etc/profile.d/jupyter-env.sh
+                echo "export IMAGE_TAG=${ImageTagName}" >> /etc/profile.d/jupyter-env.sh
+                echo "export MODEL_NAME=${ModelName}" >> /etc/profile.d/jupyter-env.sh
+                echo "export DATASET_BUCKET=${DatasetBucket}" >> /etc/profile.d/jupyter-env.sh
+                echo "export DATASET_PREFIX=${DatasetPrefix}" >> /etc/profile.d/jupyter-env.sh
+                initctl restart jupyter-server --no-wait
 
                 echo "Done! Let's do some stuff with this env"
 
