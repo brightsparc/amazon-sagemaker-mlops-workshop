@@ -81,7 +81,7 @@ Resources:
       ServiceToken: 
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-enable-data-capture'
       EndpointName: !GetAtt Endpoint.EndpointName
-      VariantName: !GetAtt AllTraffic
+      VariantName: AllTraffic
       EndpointConfigName: !Sub mlops-${ModelName}-pdc-${TrainJobId}
       DataCaptureUri: !Ref DataCaptureUri
     DependsOn: Endpoint

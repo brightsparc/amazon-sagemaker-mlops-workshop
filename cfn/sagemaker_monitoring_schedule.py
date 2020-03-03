@@ -69,8 +69,13 @@ def poll_delete(event, context):
     schedule_name = get_schedule_name(event)
     logger.info('Polling for deletion of schedule: %s', schedule_name)
     try:
-        # If still scheduled (due to being in progress on delete), delete again.
-        if is_schedule_ready(schedule_name):
+        # Check if we have running schedules before deleting schedule
+        response = sm.list_monitoring_executions(MonitoringScheduleName=schedule_name)
+        running = [m['MonitoringExecutionStatus'] for m in response['MonitoringExecutionSummaries'] 
+                if m['MonitoringExecutionStatus'] in ['Pending', 'InProgress', 'Stopping']]
+        if running:
+            print('You still have {} schedules: {}'.format(len(running), ','.join(running)))
+        elif is_schedule_ready(schedule_name):
             delete_monitoring_schedule(schedule_name)
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFound':
