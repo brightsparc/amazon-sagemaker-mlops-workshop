@@ -99,8 +99,8 @@ def is_processing_job_ready(processing_job_name):
     processing_job = sm.describe_processing_job(ProcessingJobName=processing_job_name)
     status = processing_job['ProcessingJobStatus']
 
-    if status == 'Stopped':
-        logger.info('Processing Job (%s) is stopped', processing_job_name)
+    if status == 'Stopped' or status == 'Completed':
+        logger.info('Processing Job (%s) is %s', processing_job_name, status)
         is_ready = True
     elif status == 'InProgress' or status == 'Stopping':
         logger.info('Processing Job (%s) still in progress, waiting and polling again...', processing_job_name)
