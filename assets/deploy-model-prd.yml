@@ -81,6 +81,7 @@ Resources:
       ServiceToken: 
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-enable-data-capture'
       EndpointName: !GetAtt Endpoint.EndpointName
+      VariantName: !GetAtt AllTraffic
       EndpointConfigName: !Sub mlops-${ModelName}-pdc-${TrainJobId}
       DataCaptureUri: !Ref DataCaptureUri
     DependsOn: Endpoint
@@ -317,3 +318,23 @@ Resources:
         PredefinedMetricSpecification:
           PredefinedMetricType: SageMakerVariantInvocationsPerInstance
     DependsOn: AutoScaling
+
+Outputs:
+  # ServerlessRestApi is an implicit API created out of Events key under Serverless::Function
+  # Find out more about other implicit resources you can reference within SAM
+  # https://github.com/awslabs/serverless-application-model/blob/master/docs/internals/generated_resources.rst#api
+  DeploymentApplication:
+    Description: "Regression deployment application"
+    Value: !Ref ServerlessDeploymentApplication
+  RestApi:
+    Description: "API Gateway endpoint URL for Prod stage for Regression function"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/"
+  DataCaptureEndpointUri:
+    Description: "The base uri for data capture logs"
+    Value: !GetAtt SagemakerDataCapture.DataCaptureEndpointUri
+  ProcessingJobName:
+    Description: "The name of the baseline processing job"
+    Value: !GetAtt SagemakerSuggestBaseline.ProcessingJobName
+  ScheduleName:
+    Description: "The name of the monitoring schedule"
+    Value: !GetAtt SagemakerMonitoringSchedule.ScheduleName

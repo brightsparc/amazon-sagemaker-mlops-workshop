@@ -113,6 +113,8 @@ def update_endpoint(event):
         logger.info('Create endpoint config: %s', new_config_name)
         response = sm.create_endpoint_config(**request)
         helper.Data['EndpointName'] = endpoint_name
+        helper.Data['DataCaptureEndpointUri'] = '{}/{}/{}'.format(
+            props['DataCaptureUri'], endpoint_name, props.get('VariantName', 'AllTraffic'))
         helper.Data['Arn'] = response["EndpointConfigArn"]
 
         # Update endpoint to point to new config
