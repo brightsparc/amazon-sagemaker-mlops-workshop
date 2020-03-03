@@ -190,7 +190,7 @@ def create_monitoring_schedule_config(event):
             "MonitoringResources": {
                 "ClusterConfig": {
                     "InstanceCount": 1,
-                    "InstanceType": props.get("InstanceType", "ml.t3.medium"),
+                    "InstanceType": props.get("InstanceType", "ml.m5.xlarge"),
                     "VolumeSizeInGB": 20,
                 }
             },
@@ -198,7 +198,7 @@ def create_monitoring_schedule_config(event):
                 "ImageUri": props.get("ImageURI", get_model_monitor_container_uri(helper._region)),
             },
             "StoppingCondition": {
-                "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 300))
+                "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 3600))
             },
             "Environment": {
                 "publish_cloudwatch_metrics": props.get("PublishCloudwatchMetrics", "Enabled")
