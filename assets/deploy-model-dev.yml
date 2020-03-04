@@ -15,6 +15,9 @@ Parameters:
   TrainJobId:
     Type: String
     Description: Id of the Codepipeline + SagemakerJobs
+  MLOpsRoleArn:
+    Type: String
+    Description: The MLOps role
 
 Resources:
 
@@ -25,7 +28,7 @@ Resources:
       PrimaryContainer:
         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTagName}
         ModelDataUrl: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/mlops-${ModelName}-${TrainJobId}/output/model.tar.gz
-      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+      ExecutionRoleArn: !Ref MLOpsRoleArn
   
   EndpointConfig:
     Type: "AWS::SageMaker::EndpointConfig"

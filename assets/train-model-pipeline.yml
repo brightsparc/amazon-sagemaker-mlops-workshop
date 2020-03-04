@@ -105,6 +105,7 @@ Resources:
                           "ImageTagName": "${ImageTagName}",
                           "ModelName": "${ModelName}",
                           "TrainJobId": executionId,
+                          "MLOpsRoleArn": "${MLOpsRoleArn}"
                       }
                   }
 

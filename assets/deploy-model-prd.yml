@@ -15,15 +15,15 @@ Parameters:
   TrainJobId:
     Type: String
     Description: Id of the Codepipeline + SagemakerJobs
+  MLOpsRoleArn:
+    Type: String
+    Description: The role for executing the monitoring schedule
   TrainSha256:
     Type: String
     Description: The Sha256 hash of the training job info
   DataCaptureUri:
     Type: String
     Description: The s3 uri to upload data capture logs
-  MonitoringRoleArn:
-    Type: String
-    Description: The role for executing the monitoring schedule
   BaselineInputUri:
     Type: String
     Description: The s3 uri for baseline input
@@ -49,7 +49,7 @@ Resources:
       PrimaryContainer:
         Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ImageRepoName}:${ImageTagName}
         ModelDataUrl: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/mlops-${ModelName}-${TrainJobId}/output/model.tar.gz
-      ExecutionRoleArn: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
+      ExecutionRoleArn: !Ref MLOpsRoleArn
 
   EndpointConfig:
     Type: "AWS::SageMaker::EndpointConfig"
@@ -221,7 +221,7 @@ Resources:
       ProcessingJobName: !Sub mlops-${ModelName}-pbl-${TrainJobId}
       BaselineInputUri: !Ref BaselineInputUri
       BaselineResultsUri: !Ref BaselineResultsUri
-      PassRoleArn: !Ref MonitoringRoleArn
+      PassRoleArn: !Ref MLOpsRoleArn
 
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
@@ -233,7 +233,7 @@ Resources:
       BaselineConstraintsUri: !GetAtt SagemakerSuggestBaseline.BaselineConstraintsUri
       BaselineStatisticsUri: !GetAtt SagemakerSuggestBaseline.BaselineStatisticsUri
       OutputS3URI: !Ref ScheduleReportsUri
-      PassRoleArn: !Ref MonitoringRoleArn
+      PassRoleArn: !Ref MLOpsRoleArn
     DependsOn: SagemakerDataCapture # Wait until endpoint is update for data capture
 
   SagemakerScheduleAlarm:
