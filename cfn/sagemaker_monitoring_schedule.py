@@ -47,8 +47,8 @@ def delete_handler(event, context):
     Called when CloudFormation custom resource sends the delete event
     """
     schedule_name = get_schedule_name(event)
-    if is_schedule_ready(schedule_name):
-        delete_monitoring_schedule(schedule_name)
+    logger.info('Deleting schedule: %s', schedule_name)
+    return delete_monitoring_schedule(schedule_name)
 
 @helper.poll_create
 @helper.poll_update
@@ -68,18 +68,7 @@ def poll_delete(event, context):
     """
     schedule_name = get_schedule_name(event)
     logger.info('Polling for deletion of schedule: %s', schedule_name)
-    try:
-        # Check if we have running schedules before deleting schedule
-        response = sm.list_monitoring_executions(MonitoringScheduleName=schedule_name)
-        running = [m['MonitoringExecutionStatus'] for m in response['MonitoringExecutionSummaries'] 
-                if m['MonitoringExecutionStatus'] in ['Pending', 'InProgress', 'Stopping']]
-        if running:
-            print('You still have {} schedules: {}'.format(len(running), ','.join(running)))
-        elif is_schedule_ready(schedule_name):
-            delete_monitoring_schedule(schedule_name)
-    except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFound':
-            return True
+    return delete_monitoring_schedule(schedule_name)
 
 # Helper Functions
 
@@ -191,14 +180,14 @@ def create_monitoring_schedule_config(event):
                 "ClusterConfig": {
                     "InstanceCount": 1,
                     "InstanceType": props.get("InstanceType", "ml.m5.xlarge"),
-                    "VolumeSizeInGB": 20,
+                    "VolumeSizeInGB": 30,
                 }
             },
             "MonitoringAppSpecification": {
                 "ImageUri": props.get("ImageURI", get_model_monitor_container_uri(helper._region)),
             },
             "StoppingCondition": {
-                "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 3600))
+                "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 1800)) # 30 mins
             },
             "Environment": {
                 "publish_cloudwatch_metrics": props.get("PublishCloudwatchMetrics", "Enabled")
@@ -218,16 +207,23 @@ def create_monitoring_schedule_config(event):
 
     return request
 
-
 def delete_monitoring_schedule(schedule_name):
-    logger.info('Deleting schedule: %s', schedule_name)
     try:
-        sm.delete_monitoring_schedule(MonitoringScheduleName=schedule_name)
+        if is_schedule_ready(schedule_name):
+            # Check if we have running schedule excutions before deleting schedule
+            response = sm.list_monitoring_executions(MonitoringScheduleName=schedule_name)
+            running = [m['MonitoringExecutionStatus'] for m in response['MonitoringExecutionSummaries'] 
+                    if m['MonitoringExecutionStatus'] in ['Pending', 'InProgress', 'Stopping']]
+            if running:
+                logger.info('You still have %d executions: %s', len(running), ','.join(running))
+            else:
+                sm.delete_monitoring_schedule(MonitoringScheduleName=schedule_name)
     except ClientError as e:
         if e.response['Error']['Code'] == 'ResourceNotFound':
             logger.info('Resource not found, nothing to delete')
+            # Return true so it stops polling
+            return True
         else:
-            # NOTE: Delete schedule can fail "can't delete schedule as it has in-progress executions"
             logger.error('Unexpected error while trying to delete monitoring schedule')
             raise e
         

@@ -177,11 +177,11 @@ def get_suggest_baseline_request(event):
             "ClusterConfig": {
                 "InstanceCount": 1,
                 "InstanceType": props.get("InstanceType", "ml.m5.xlarge"),
-                "VolumeSizeInGB": 20,
+                "VolumeSizeInGB": 30,
             }
         },
         "StoppingCondition": {
-            "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 3600))
+            "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 1800)) # 30 minutes
         },
         "AppSpecification": {
             "ImageUri": props.get("ImageURI", get_model_monitor_container_uri(helper._region))
