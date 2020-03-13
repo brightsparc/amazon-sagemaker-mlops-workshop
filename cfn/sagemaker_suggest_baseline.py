@@ -16,7 +16,6 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
-    print('event', json.dumps(event))
     helper(event, context)
 
 
@@ -119,6 +118,7 @@ def create_processing_job(event):
     request, constraints_uri, statistics_uri = get_processing_request(event)
 
     logger.info('Creating processing job with name: %s', processing_job_name)
+    logger.debug(json.dumps(request))
     response = sm.create_processing_job(**request)
 
     # Update Output Parameters
@@ -282,6 +282,7 @@ def get_processing_request(event, dataset_format=DatasetFormat.csv()):
     data = event.get('CrHelperData')
     if event['RequestType'] == 'Update' and data != None:
         # Add baseline constraints
+        logger.debug('Update with constraints: %s', data['BaselineConstraintsUri'])
         env = request["Environment"]
         env['baseline_constraints'] = '/opt/ml/processing/baseline/constraints/constraints.json'
         request['ProcessingInputs'].append(
@@ -297,6 +298,7 @@ def get_processing_request(event, dataset_format=DatasetFormat.csv()):
                 }
             })
         # Add baseline statistics
+        logger.debug('Update with statistics: %s', data['BaselineStatisticsUri'])
         env['baseline_statistics'] = '/opt/ml/processing/baseline/stats/statistics.json'
         request['ProcessingInputs'].append(
             {

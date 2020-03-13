@@ -30,7 +30,7 @@ def lambda_handler(event, context):
     try:
         if data_capture_uri:
             # List objects under data capture logs director
-            bucket, prefix = get_bucket_prefix(data_capture_logs_uri)
+            bucket, prefix = get_bucket_prefix(data_capture_uri)
             contents = s3.list_objects(Bucket=bucket, Prefix=prefix).get('Contents')
             if contents != None and contents:
                 logger.info('Found %d data capture logs', len(contents))
