@@ -16,6 +16,7 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
+    print('event', json.dumps(event))
     helper(event, context)
 
 
@@ -58,7 +59,10 @@ def poll_delete(event, context):
     try:
         return is_processing_job_ready(processing_job_name)
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFound':
+        # NOTE: This doesn't return "ResourceNotFound" code, so need to catch
+        if e.response['Error']['Code'] == 'ValidationException' and \
+            'Could not find' in e.response['Error']['Message']:
+            logger.info('Resource not found, nothing to delete')
             return True
 
 # Helper Functions
@@ -112,7 +116,7 @@ def is_processing_job_ready(processing_job_name):
 def create_processing_job(event):
     processing_job_name = get_processing_job_name(event)
 
-    request, constraints_uri, statistics_uri = get_suggest_baseline_request(event)
+    request, constraints_uri, statistics_uri = get_processing_request(event)
 
     logger.info('Creating processing job with name: %s', processing_job_name)
     response = sm.create_processing_job(**request)
@@ -134,17 +138,59 @@ def stop_processing_job(processing_job_name):
         else:
             logger.info('Processing job status: %s, nothing to stop', status)
     except ClientError as e:
-        if e.response['Error']['Code'] == 'ResourceNotFound':
+        # NOTE: This doesn't return "ResourceNotFound" code, so need to catch
+        if e.response['Error']['Code'] == 'ValidationException' and \
+            'Could not find' in e.response['Error']['Message']:
             logger.info('Resource not found, nothing to stop')
         else:
             logger.error('Unexpected error while trying to stop processing job')
             raise e
 
-def get_suggest_baseline_request(event):
-    props = event['ResourceProperties']
+class DatasetFormat(object):
+    """Represents a Dataset Format that is used when calling a DefaultModelMonitor.
+    """
 
-    # TODO: Allow specifying format in future
-    dataset_format = { 'csv': {'header': True, 'output_columns_position': 'START'}}
+    @staticmethod
+    def csv(header=True, output_columns_position="START"):
+        """Returns a DatasetFormat JSON string for use with a DefaultModelMonitor.
+        Args:
+            header (bool): Whether the csv dataset to baseline and monitor has a header.
+                Default: True.
+            output_columns_position (str): The position of the output columns.
+                Must be one of ("START", "END"). Default: "START".
+        Returns:
+            dict: JSON string containing DatasetFormat to be used by DefaultModelMonitor.
+        """
+        return {"csv": {"header": header, "output_columns_position": output_columns_position}}
+
+    @staticmethod
+    def json(lines=True):
+        """Returns a DatasetFormat JSON string for use with a DefaultModelMonitor.
+        Args:
+            lines (bool): Whether the file should be read as a json object per line. Default: True.
+        Returns:
+            dict: JSON string containing DatasetFormat to be used by DefaultModelMonitor.
+        """
+        return {"json": {"lines": lines}}
+
+    @staticmethod
+    def sagemaker_capture_json():
+        """Returns a DatasetFormat SageMaker Capture Json string for use with a DefaultModelMonitor.
+        Returns:
+            dict: JSON string containing DatasetFormat to be used by DefaultModelMonitor.
+        """
+        return {"sagemaker_capture_json": {"captureIndexNames":["endpointInput","endpointOutput"]}}
+
+def get_file_name(url):
+    try:
+        from urllib.parse import urlparse
+    except ImportError:
+        from urlparse import urlparse
+    a = urlparse(url)
+    return os.path.basename(a.path)
+
+def get_processing_request(event, dataset_format=DatasetFormat.csv()):
+    props = event['ResourceProperties']
 
     request = {
         "ProcessingInputs": [
@@ -163,11 +209,11 @@ def get_suggest_baseline_request(event):
         "ProcessingOutputConfig": {
             "Outputs": [
                 {
-                    "OutputName": "monitoring_output", # Validate this is correct
+                    "OutputName": "monitoring_output",
                     "S3Output": {
                         "S3Uri": props['BaselineResultsUri'],
                         "LocalPath": "/opt/ml/processing/output",
-                        "S3UploadMode": "EndOfJob"
+                        "S3UploadMode": props.get('S3UploadMode', "EndOfJob")
                     }
                 }
             ]
@@ -184,7 +230,7 @@ def get_suggest_baseline_request(event):
             "MaxRuntimeInSeconds": int(props.get("MaxRuntimeInSeconds", 1800)) # 30 minutes
         },
         "AppSpecification": {
-            "ImageUri": props.get("ImageURI", get_model_monitor_container_uri(helper._region))
+            "ImageUri": props.get("ImageURI", get_model_monitor_container_uri(helper._region)),
         },
         "Environment": {
             "dataset_format": json.dumps(dataset_format),
@@ -199,10 +245,71 @@ def get_suggest_baseline_request(event):
 
     if props.get('RecordPreprocessorSourceUri'):
         env = request["Environment"]
-        env["record_preprocessor_script"] = props['RecordPreprocessorSourceUri']
+        fn = get_file_name(props['RecordPreprocessorSourceUri'])
+        env["record_preprocessor_script"] = '/opt/ml/processing/code/postprocessing/' + fn
+        request['ProcessingInputs'].append(
+            {
+                "InputName": "pre_processor_script",
+                "S3Input": {
+                    "S3Uri": props['RecordPreprocessorSourceUri'],
+                    "LocalPath": "/opt/ml/processing/code/postprocessing",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                }
+            })
+
     if props.get('PostAnalyticsProcessorSourceUri'):
         env = request["Environment"]
-        env["post_analytics_processor_script"] = props['PostAnalyticsProcessorSourceUri']
+        fn = get_file_name(props['PostAnalyticsProcessorSourceUri'])
+        env["post_analytics_processor_script"] = '/opt/ml/processing/code/postprocessing/' + fn
+        request['ProcessingInputs'].append(
+            {
+                "InputName": "post_processor_script",
+                "S3Input": {
+                    "S3Uri": props['PostAnalyticsProcessorSourceUri'],
+                    "LocalPath": "/opt/ml/processing/code/postprocessing",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                }
+            })
+
+    # If this is an update and we have previous baseline & constraints uri add these as inputs
+
+    data = event.get('CrHelperData')
+    if event['RequestType'] == 'Update' and data != None:
+        # Add baseline constraints
+        env = request["Environment"]
+        env['baseline_constraints'] = '/opt/ml/processing/baseline/constraints/constraints.json'
+        request['ProcessingInputs'].append(
+            {
+                "InputName": "constraints",
+                "S3Input": {
+                    "S3Uri": data['BaselineConstraintsUri'],
+                    "LocalPath": "/opt/ml/processing/baseline/constraints",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                }
+            })
+        # Add baseline statistics
+        env['baseline_statistics'] = '/opt/ml/processing/baseline/stats/statistics.json'
+        request['ProcessingInputs'].append(
+            {
+                "InputName": "baseline",
+                "S3Input": {
+                    "S3Uri": data['BaselineStatisticsUri'],
+                    "LocalPath": "/opt/ml/processing/baseline/stats",
+                    "S3DataType": "S3Prefix",
+                    "S3InputMode": "File",
+                    "S3DataDistributionType": "FullyReplicated",
+                    "S3CompressionType": "None"
+                }
+            })
 
     # Build the constraints and statistics URI from the results URI
 

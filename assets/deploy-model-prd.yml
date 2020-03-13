@@ -21,18 +21,9 @@ Parameters:
   TrainSha256:
     Type: String
     Description: The Sha256 hash of the training job info
-  DataCaptureUri:
-    Type: String
-    Description: The s3 uri to upload data capture logs
   BaselineInputUri:
     Type: String
     Description: The s3 uri for baseline input
-  BaselineResultsUri:
-    Type: String
-    Description: The s3 uri for storing baseline results
-  ScheduleReportsUri:
-    Type: String
-    Description: The s3 uri to schedule reports
   ScheduleMetricName:
     Type: String
     Description: The metric to alarm on for schedule
@@ -83,7 +74,7 @@ Resources:
       EndpointName: !GetAtt Endpoint.EndpointName
       VariantName: AllTraffic
       EndpointConfigName: !Sub mlops-${ModelName}-pdc-${TrainJobId}
-      DataCaptureUri: !Ref DataCaptureUri
+      DataCaptureUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/datacapture
     DependsOn: Endpoint
 
   DeploymentCompleteTopic:
@@ -185,7 +176,6 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
-          DATA_CAPTURE_URI: !Ref DataCaptureUri
       Description: "Perform checks pre-shifting traffic to lambda"
 
   PostTrafficLambdaFunction:
@@ -210,7 +200,7 @@ Resources:
       Environment:
         Variables:
           ENDPOINT_NAME: !GetAtt Endpoint.EndpointName
-          DATA_CAPTURE_URI: !Ref DataCaptureUri
+          DATA_CAPTURE_URI: !GetAtt SagemakerDataCapture.DataCaptureEndpointUri
       Description: "Perform checks post-shifting traffic to lambda"
 
   SagemakerSuggestBaseline:
@@ -220,7 +210,7 @@ Resources:
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-suggest-baseline'
       ProcessingJobName: !Sub mlops-${ModelName}-pbl-${TrainJobId}
       BaselineInputUri: !Ref BaselineInputUri
-      BaselineResultsUri: !Ref BaselineResultsUri
+      BaselineResultsUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/baseline/mlops-${ModelName}-pbl-${TrainJobId}
       PassRoleArn: !Ref MLOpsRoleArn
 
   SagemakerMonitoringSchedule:
@@ -232,7 +222,7 @@ Resources:
       ScheduleName: !Sub mlops-${ModelName}-pms-${TrainJobId}
       BaselineConstraintsUri: !GetAtt SagemakerSuggestBaseline.BaselineConstraintsUri
       BaselineStatisticsUri: !GetAtt SagemakerSuggestBaseline.BaselineStatisticsUri
-      OutputS3URI: !Ref ScheduleReportsUri
+      OutputS3URI: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/reports
       PassRoleArn: !Ref MLOpsRoleArn
     DependsOn: SagemakerDataCapture # Wait until endpoint is update for data capture
 
