@@ -269,7 +269,7 @@ Resources:
                 Version: 1
                 Provider: CloudFormation                
               Configuration:
-                ActionMode: REPLACE_ON_FAILURE
+                ActionMode: CREATE_UPDATE
                 RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
