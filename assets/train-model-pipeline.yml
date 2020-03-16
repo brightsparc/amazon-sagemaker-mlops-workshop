@@ -3,6 +3,14 @@
 
 Description: Create a CodePipeline for a Machine Learning Model
 Parameters:
+  GitHubToken:
+    NoEcho: true
+    Description: Secret. It might look something like 9b189a1654643522561f7b3ebd44a1531a4287af OAuthToken with access to Repo. Go to https://github.com/settings/tokens
+    Type: String
+  GitHubUser:
+    Default: brightsparc
+    Description: GitHub UserName
+    Type: String
   CodeRepoName:
     Type: String
     Description: Name of the CodeCommit repo
@@ -29,7 +37,24 @@ Parameters:
     Default: latest
 
 Resources:
-  
+
+  BuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Sub ${AWS::StackName}-mlops-build
+      Description: Builds the assets required for executing the rest of pipeline
+      ServiceRole: !Ref MLOpsRoleArn
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/amazonlinux2-x86_64-standard:1.0
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: workflow/buildspec.yaml
+      TimeoutInMinutes: 30
+    
   MLOpsLaunchJob:
     Type: "AWS::Lambda::Function"
     Properties: 
@@ -45,85 +70,42 @@ Resources:
           import io
           import zipfile
           import json
-          import hashlib
 
           s3 = boto3.client('s3')
           sm = boto3.client('sagemaker')
           codepipeline = boto3.client('codepipeline')
 
           def lambda_handler(event, context):
-              pipeline_name='${AWS::StackName}'
-              
-              model_name = '${ModelName}'
               jobId = event["CodePipeline.job"]["id"]
-              accountId = event["CodePipeline.job"]["accountId"]
               trainingJob = None
+
               try:
-                  response = codepipeline.get_pipeline_state( name=pipeline_name )
-                  executionId = response['stageStates'][0]['latestExecution']['pipelineExecutionId']
                   for inputArtifacts in event["CodePipeline.job"]["data"]["inputArtifacts"]:
                       if inputArtifacts['name'] == 'ModelSourceOutput':
                           s3Location = inputArtifacts['location']['s3Location']
                           zip_bytes = s3.get_object(Bucket=s3Location['bucketName'], Key=s3Location['objectKey'])['Body'].read()
                           with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
-                              trainingJob = json.loads(z.read('trainingjob.json').decode('ascii'))
-                              monitoring = json.loads(z.read('monitoring.json').decode('ascii'))
+                            trainingJob = json.loads(z.read('trainingjob.json').decode('utf-8'))
+                            experiment = json.loads(z.read('experiment.json').decode('utf-8'))
+                            trial = json.loads(z.read('trial.json').decode('utf-8'))
 
                   if trainingJob is None:
-                    raise(Exception("trainingjob.json wasn't found"))
+                    raise(Exception("training.json wasn't found"))
 
                   try:
-                      response = sm.create_experiment(ExperimentName=model_name)
+                      response = sm.create_experiment(**experiment)
                       print('created exp', response)
                   except Exception as e:
                       pass
                   try:
-                      response = sm.create_trial(ExperimentName=model_name,TrialName=executionId)
+                      response = sm.create_trial(**trial)
                       print('created trial', response)
                   except Exception as e:
                       pass
 
-                  trainingJob['TrainingJobName'] = 'mlops-${ModelName}-%s' % executionId
-                  trainingJob['ExperimentConfig'] = {
-                    'ExperimentName': model_name,
-                    'TrialName': executionId,
-                    'TrialComponentDisplayName': 'Training'
-                  }
-                  trainingJob['Tags'].append({'Key': 'jobid', 'Value': jobId})
                   print('Start training job %s' % (trainingJob['TrainingJobName']))      
                   sm.create_training_job(**trainingJob)
-
-                  params_training_job = {
-                      "Parameters": {
-                          "TrainingJobName": trainingJob['TrainingJobName']
-                      }
-                  }
-                                        
-                  params_deploy_dev = {
-                      "Parameters": {
-                          "ImageRepoName": "${ImageRepoName}",
-                          "ImageTagName": "${ImageTagName}",
-                          "ModelName": "${ModelName}",
-                          "TrainJobId": executionId,
-                          "MLOpsRoleArn": "${MLOpsRoleArn}"
-                      }
-                  }
-
-                  params_deploy_prod = {
-                      "Parameters": dict(params_deploy_dev['Parameters'], **monitoring)
-                  }
-
-                  for outputArtifacts in event["CodePipeline.job"]["data"]["outputArtifacts"]:
-                      if outputArtifacts['name'] == 'ModelTrainOutput':
-                          s3Location = outputArtifacts['location']['s3Location']
-                          zip_bytes = io.BytesIO()
-                          with zipfile.ZipFile(zip_bytes, "w") as z:
-                              z.writestr('assets/training-job.json', json.dumps(params_training_job))
-                              z.writestr('assets/deploy-model-dev.json', json.dumps(params_deploy_dev))
-                              z.writestr('assets/deploy-model-prd.json', json.dumps(params_deploy_prod))
-                          zip_bytes.seek(0)
-                          s3.put_object(Bucket=s3Location['bucketName'], Key=s3Location['objectKey'], Body=zip_bytes.read())
-              
+ 
                   # and update codepipeline
                   codepipeline.put_job_success_result(jobId=jobId)
               except Exception as e:
@@ -142,7 +124,7 @@ Resources:
       Tags:
         - Key: Name
           Value: !Sub mlops-launch-job-${ModelName}
-    
+
   DeployPipeline:
     Type: "AWS::CodePipeline::Pipeline"
     Properties:
@@ -160,17 +142,16 @@ Resources:
               Name: GitSource
               ActionTypeId: 
                 Category: Source
-                Owner: AWS
+                Owner: ThirdParty
                 Version: 1
-                Provider: CodeCommit
+                Provider: GitHub
               OutputArtifacts: 
                 - Name: ModelSourceOutput
-              Configuration:
-                BranchName: 
-                  Ref: CodeBranchName
-                RepositoryName: 
-                  Ref: CodeRepoName
-              RunOrder: 1
+              Configuration: 
+                Owner: !Ref GitHubUser
+                Repo: !Ref CodeRepoName
+                Branch: !Ref CodeBranchName
+                OAuthToken: !Ref GitHubToken
             -
               Name: EcrSource
               ActionTypeId:
@@ -181,11 +162,71 @@ Resources:
               OutputArtifacts:
                 - Name: EcrSourceOutput
               Configuration:
-                ImageTag:
-                  Ref: ImageTagName
-                RepositoryName:
-                  Ref: ImageRepoName
+                ImageTag: !Ref ImageTagName
+                RepositoryName: !Ref ImageRepoName
               RunOrder: 1
+            -
+              Name: DataSource
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Version: 1
+                Provider: S3
+              OutputArtifacts:
+                - Name: DataSourceOutput
+              Configuration:
+                S3Bucket: !Ref ArtifactBucket
+                S3ObjectKey: data-source.zip
+              RunOrder: 1
+        -
+          Name: Build
+          Actions:
+            -
+              Name: BuildTemplates
+              InputArtifacts:
+                - Name: ModelSourceOutput
+              OutputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Version: 1
+                Provider: CodeBuild
+              Configuration:
+                ProjectName: !Ref BuildProject
+                EnvironmentVariables: !Sub '[{"name":"DATA_BUCKET","value":"sagemaker-${AWS::Region}-${AWS::AccountId}","type":"PLAINTEXT"},{"name":"MODEL_NAME","value":"${ModelName}","type":"PLAINTEXT"},{"name":"ROLE_ARN","value":"${MLOpsRoleArn}","type":"PLAINTEXT"},{"name":"ARTIFACT_BUCKET","value":"${ArtifactBucket}","type":"PLAINTEXT"}]'
+              RunOrder: 1
+            -
+              Name: CustomResource
+              InputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                RoleArn: !Ref MLOpsRoleArn
+                StackName: !Sub ${AWS::StackName}-custom-resource
+                TemplatePath: ModelSourceOutput::assets/sagemaker-custom-resource.yml
+              RunOrder: 2
+            -
+              Name: SuggestBaseline
+              InputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                RoleArn: !Ref MLOpsRoleArn
+                StackName: !Sub ${AWS::StackName}-suggest-baseline
+                TemplateConfiguration: ModelTrainOutput::assets/suggest-baseline.json
+                TemplatePath: ModelSourceOutput::assets/suggest-baseline.yml
+              RunOrder: 3
         -
           Name: Train
           Actions:
@@ -201,8 +242,7 @@ Resources:
                 Version: 1
                 Provider: Lambda
               Configuration:
-                  FunctionName:
-                    Ref: MLOpsLaunchJob
+                  FunctionName: !Ref MLOpsLaunchJob
                   UserParameters: !Sub mlops-pipeline-${ModelName}
               RunOrder: 1
             - 
@@ -251,7 +291,7 @@ Resources:
                 Version: 1
                 Provider: Manual
               Configuration:
-                  CustomData: 'Shall this model be put into production?'
+                CustomData: 'Shall this model be put into production?'
               RunOrder: 2
         -
           Name: DeployPrd
@@ -273,8 +313,6 @@ Resources:
                 RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
-                TemplateConfiguration: ModelTrainOutput::assets/deploy-model-prd.json
-                TemplatePath: ModelSourceOutput::assets/deploy-model-prd.yml
+                TemplateConfiguration: ModelTrainOutput::assets/template-model-prd.json
+                TemplatePath: ModelSourceOutput::assets/template-model-prd.yml
               RunOrder: 1
-    DependsOn:
-      MLOpsLaunchJob
