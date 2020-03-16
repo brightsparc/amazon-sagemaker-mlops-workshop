@@ -29,14 +29,11 @@ phases:
   post_build:
     commands:
       - echo Package custom resources
-      - aws cloudformation package --template-file assets/sagemaker-custom-resource.yml \
-                               --output-template-file assets/template-custom-resource.yml \
-                               --s3-bucket $ARTIFACT_BUCKET                               
+      - aws cloudformation package --template-file assets/sagemaker-custom-resource.yml --output-template-file assets/template-custom-resource.yml --s3-bucket $ARTIFACT_BUCKET                               
       - echo Packge prod deployment
-      - aws cloudformation package --template-file assets/deploy-model-prd.yml \
-                               --output-template-file assets/template-model-prd.yml \
-                               --s3-bucket $ARTIFACT_BUCKET
+      - aws cloudformation package --template-file assets/deploy-model-prd.yml --output-template-file assets/template-model-prd.yml --s3-bucket $ARTIFACT_BUCKET
       - echo Done
+
 artifacts:
   files:
     - assets/*.json
