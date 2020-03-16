@@ -52,7 +52,7 @@ Resources:
         Image: aws/codebuild/amazonlinux2-x86_64-standard:1.0
       Source:
         Type: CODEPIPELINE
-        BuildSpec: workflow/buildspec.yaml
+        BuildSpec: workflow/buildspec.yml
       TimeoutInMinutes: 30
     
   MLOpsLaunchJob:
@@ -185,6 +185,8 @@ Resources:
               Name: BuildTemplates
               InputArtifacts:
                 - Name: ModelSourceOutput
+                - Name: EcrSourceOutput
+                - Name: DataSourceOutput
               OutputArtifacts:
                 - Name: BuildOutput
               ActionTypeId:
@@ -194,8 +196,12 @@ Resources:
                 Provider: CodeBuild
               Configuration:
                 ProjectName: !Ref BuildProject
+                PrimarySource: ModelSourceOutput
                 EnvironmentVariables: !Sub '[{"name":"DATA_BUCKET","value":"sagemaker-${AWS::Region}-${AWS::AccountId}","type":"PLAINTEXT"},{"name":"MODEL_NAME","value":"${ModelName}","type":"PLAINTEXT"},{"name":"ROLE_ARN","value":"${MLOpsRoleArn}","type":"PLAINTEXT"},{"name":"ARTIFACT_BUCKET","value":"${ArtifactBucket}","type":"PLAINTEXT"}]'
               RunOrder: 1
+        -
+          Name: Baseline
+          Actions:
             -
               Name: CustomResource
               InputArtifacts:
@@ -208,9 +214,10 @@ Resources:
               Configuration:
                 ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Ref MLOpsRoleArn
+                Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-custom-resource
-                TemplatePath: ModelSourceOutput::assets/sagemaker-custom-resource.yml
-              RunOrder: 2
+                TemplatePath: BuildOutput::template-custom-resource.yml
+              RunOrder: 1
             -
               Name: SuggestBaseline
               InputArtifacts:
@@ -224,8 +231,18 @@ Resources:
                 ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Ref MLOpsRoleArn
                 StackName: !Sub ${AWS::StackName}-suggest-baseline
-                TemplateConfiguration: ModelTrainOutput::assets/suggest-baseline.json
-                TemplatePath: ModelSourceOutput::assets/suggest-baseline.yml
+                TemplateConfiguration: BuildOutput::suggest-baseline.json
+                TemplatePath: BuildOutput::suggest-baseline.yml
+              RunOrder: 2
+            -
+              Name: ApproveBaseline
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: 'Are you happy to proceed with training?'
               RunOrder: 3
         -
           Name: Train
@@ -233,9 +250,7 @@ Resources:
             -
               Name: TrainModel
               InputArtifacts:
-                - Name: ModelSourceOutput
-              OutputArtifacts:
-                - Name: ModelTrainOutput
+                - Name: BuildOutput
               ActionTypeId:
                 Category: Invoke
                 Owner: AWS
@@ -248,8 +263,7 @@ Resources:
             - 
               Name: WaitForTraining
               InputArtifacts:
-                - Name: ModelSourceOutput
-                - Name: ModelTrainOutput
+                - Name: BuildOutput
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -259,17 +273,26 @@ Resources:
                 ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Ref MLOpsRoleArn
                 StackName: !Sub ${AWS::StackName}-wait-training-job
-                TemplateConfiguration: ModelTrainOutput::assets/training-job.json
-                TemplatePath: ModelSourceOutput::assets/wait-training-job.yml
+                TemplateConfiguration: BuildOutput::training-job.json
+                TemplatePath: BuildOutput::wait-training-job.yml
               RunOrder: 2
+            -
+              Name: ApproveTrain
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                CustomData: 'Does this training job look good'
+              RunOrder: 3
         -
           Name: DeployDev
           Actions:
             - 
               Name: DeployModelDev
               InputArtifacts:
-                - Name: ModelSourceOutput
-                - Name: ModelTrainOutput
+                - Name: BuildOutput
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
@@ -280,8 +303,8 @@ Resources:
                 RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM
                 StackName: !Sub ${AWS::StackName}-deploy-dev
-                TemplateConfiguration: ModelTrainOutput::assets/deploy-model-dev.json
-                TemplatePath: ModelSourceOutput::assets/deploy-model-dev.yml
+                TemplateConfiguration: BuildOutput::deploy-model-dev.json
+                TemplatePath: BuildOutput::deploy-model-dev.yml
               RunOrder: 1
             -
               Name: ApproveDeploy
@@ -299,8 +322,7 @@ Resources:
             - 
               Name: DeployModelPrd
               InputArtifacts:
-                - Name: ModelSourceOutput
-                - Name: ModelTrainOutput
+                - Name: BuildOutput
               OutputArtifacts:
                 - Name: ModelDeployPrdOutput
               ActionTypeId:
@@ -313,6 +335,100 @@ Resources:
                 RoleArn: !Ref MLOpsRoleArn
                 Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
                 StackName: !Sub ${AWS::StackName}-deploy-prd
-                TemplateConfiguration: ModelTrainOutput::assets/template-model-prd.json
-                TemplatePath: ModelSourceOutput::assets/template-model-prd.yml
+                TemplateConfiguration: BuildOutput::template-model-prd.json
+                TemplatePath: BuildOutput::template-model-prd.yml
               RunOrder: 1
+
+  MLOpsJobMonitor:
+    Type: "AWS::Lambda::Function"
+    Properties: 
+      FunctionName: !Sub ${AWS::StackName}-mlops-monitor
+      Handler: index.lambda_handler
+      Runtime: python3.7
+      MemorySize: 512
+      Role: !Ref MLOpsRoleArn
+      Runtime: python3.6
+      Timeout: 60
+      Code: 
+        ZipFile: !Sub |
+          import boto3
+          import json
+          codepipeline = boto3.client('codepipeline')
+          def lambda_handler(event, context):
+            print('event', json.dumps(event))
+            # Define stage and action name
+            stage_name = event['detail']['stage']
+            action_name = event['detail']['action']
+            status = event['detail']['state']
+            print('stage: {}/{} status: {}', stage_name, action_name, status)
+            # The pipeline will be the same name step function workflow
+            pipeline_name = '${AWS::StackName}'
+            response = codepipeline.get_pipeline_state( name=pipeline_name )
+            print('get_pipeline_state', response)
+            token = None
+            for stageState in response['stageStates']:
+              if stageState['stageName'] == stage_name:
+                for actionState in stageState['actionStates']:
+                  if actionState['actionName'] == action_name:
+                    if not 'latestExecution' in actionState:
+                      raise(Exception("Approval not available"))
+                    else:
+                      latestExecution = actionState['latestExecution']
+                      if latestExecution['status'] != 'InProgress':
+                        raise(Exception("Approval is not awaiting for approval: %s" % latestExecution['status']))
+                      token = latestExecution['token']
+            if token is None:
+              return "No token found"
+            # TODO: If Baseline, automatically approve when Complete without viloations
+            # TODO: If Training, automatically approve when no rule violoations
+            # Check status
+            if status == 'SUCCEEDED':
+              result={
+                  'summary': 'Model trained successfully',
+                  'status': 'Approved'
+                }
+            else:
+              result={
+                'summary': 'Workflow unsuccesful with status: {}'.format(status),
+                'status': 'Rejected'
+              }
+            # Update approval
+            response = codepipeline.put_approval_result(
+              pipelineName=pipeline_name,
+              stageName=stage_name,
+              actionName=action_name,
+              result=result,
+              token=token
+            )
+            print('put_approval_result', response)
+            return "Done"
+      Description: "Function called when a step function workflow is complete"
+      
+  MLOpsJobMonitorPermissions:
+    Type: "AWS::Lambda::Permission"
+    Properties: 
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref MLOpsJobMonitor
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt JobMonitoringEvent.Arn
+
+  JobMonitoringEvent:
+    Type: "AWS::Events::Rule"
+    Properties: 
+      Description: "Event that will be called when pipeline actions "
+      Name: !Sub ${AWS::StackName}-mlops-monitor
+      EventPattern: 
+        source: 
+          - "aws.codepipeline"
+        detail-type: 
+          - "CodePipeline Action Execution State Change"
+        detail: 
+          pipeline:
+            - !Ref DeployPipeline
+          state:
+            - "SUCCEEDED"
+            - "FAILED"
+      Targets:
+        - Arn: !GetAtt MLOpsJobMonitor.Arn
+          Id: !Sub ${AWS::StackName}-mlops-event
+    DependsOn: MLOpsJobMonitor

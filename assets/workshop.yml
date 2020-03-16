@@ -63,6 +63,8 @@ Resources:
     Properties: 
       BucketName: !Sub ${AWS::StackName}-${AWS::Region}-${AWS::AccountId}
       AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
 
   MLOpsRepo:
     Type: AWS::CodeCommit::Repository

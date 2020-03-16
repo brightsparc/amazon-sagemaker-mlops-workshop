@@ -120,7 +120,6 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
 
     print('job id: {}'.format(job_id))
     output_uri = 's3://{0}/{1}'.format(data_bucket, model_name)
-    baseline_uri = 's3://{0}/{1}/monitoring/baseline/mlops-{1}-pbl-{2}'.format(data_bucket, model_name, job_id)
     
     # Load the image uri and input data config
     with open(os.path.join(ecr_dir, 'imageDetail.json'), 'r') as f:
@@ -130,7 +129,10 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
     with open(os.path.join(data_dir, 'inputData.json'), 'r') as f:
         input_data = json.load(f)
         print('input data: {}'.format(input_data))
-        
+
+    # TODO: Get the 'baseline' input data in future
+    baseline_uri = input_data[0]['DataSource']['S3DataSource']['S3Uri']
+
     hyperparameters = {}
     if os.path.exists(os.path.join(data_dir, 'hyperparameters.json')):
         with open(os.path.join(data_dir, 'hyperparameters.json'), 'r') as f:
