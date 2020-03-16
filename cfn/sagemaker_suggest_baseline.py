@@ -55,14 +55,7 @@ def poll_delete(event, context):
     """
     processing_job_name = get_processing_job_name(event)
     logger.info('Polling for stopped processing job: %s', processing_job_name)
-    try:
-        return is_processing_job_ready(processing_job_name)
-    except ClientError as e:
-        # NOTE: This doesn't return "ResourceNotFound" code, so need to catch
-        if e.response['Error']['Code'] == 'ValidationException' and \
-            'Could not find' in e.response['Error']['Message']:
-            logger.info('Resource not found, nothing to delete')
-            return True
+    return stop_processing_job(processing_job_name)
 
 # Helper Functions
 
@@ -135,13 +128,16 @@ def stop_processing_job(processing_job_name):
         if status == 'InProgress':
             logger.info('Stopping InProgress processing job: %s', processing_job_name)
             sm.stop_processing_job(ProcessingJobName=processing_job_name)
+            return False
         else:
             logger.info('Processing job status: %s, nothing to stop', status)
+            return True
     except ClientError as e:
         # NOTE: This doesn't return "ResourceNotFound" code, so need to catch
         if e.response['Error']['Code'] == 'ValidationException' and \
             'Could not find' in e.response['Error']['Message']:
             logger.info('Resource not found, nothing to stop')
+            return True
         else:
             logger.error('Unexpected error while trying to stop processing job')
             raise e
