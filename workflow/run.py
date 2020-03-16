@@ -57,7 +57,9 @@ def get_training_request(model_name, job_id, role, image_uri, input_data, hyperp
             "InstanceType": "ml.m4.xlarge",
             "VolumeSizeInGB": 30
         },
-        "StoppingCondition": 360000,
+        "StoppingCondition": {
+            "MaxRuntimeInSeconds": 360000,
+        },
         "ExperimentConfig": {   
             "ExperimentName": model_name,
             "TrialName": job_id,
