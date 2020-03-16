@@ -357,11 +357,13 @@ Resources:
           codepipeline = boto3.client('codepipeline')
           def lambda_handler(event, context):
             print('event', json.dumps(event))
+            if event['detail']['type']['category'] != "Approval":
+              return "Not approval"
             # Define stage and action name
             stage_name = event['detail']['stage']
             action_name = event['detail']['action']
             status = event['detail']['state']
-            print('stage: {}/{} status: {}', stage_name, action_name, status)
+            print('stage: {} action: {} status: {}'.format(stage_name, action_name, status))
             # The pipeline will be the same name step function workflow
             pipeline_name = '${AWS::StackName}'
             response = codepipeline.get_pipeline_state( name=pipeline_name )
@@ -379,13 +381,13 @@ Resources:
                         raise(Exception("Approval is not awaiting for approval: %s" % latestExecution['status']))
                       token = latestExecution['token']
             if token is None:
-              return "No token found"
-            # TODO: If Baseline, automatically approve when Complete without viloations
-            # TODO: If Training, automatically approve when no rule violoations
-            # Check status
-            if status == 'SUCCEEDED':
+              raise(Exception("No token found"))
+            # TODO: If Stage Baseline, automatically approve when Complete without viloations
+            # TODO: If Stage Train, automatically approve when no rule violoations
+            # TODO: Check service status
+            if status == 'STARTED':
               result={
-                  'summary': 'Model trained successfully',
+                  'summary': 'Job succesful',
                   'status': 'Approved'
                 }
             else:
@@ -427,8 +429,7 @@ Resources:
           pipeline:
             - !Ref DeployPipeline
           state:
-            - "SUCCEEDED"
-            - "FAILED"
+            - "STARTED"
       Targets:
         - Arn: !GetAtt MLOpsJobMonitor.Arn
           Id: !Sub ${AWS::StackName}-mlops-event

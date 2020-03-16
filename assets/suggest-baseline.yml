@@ -1,4 +1,4 @@
-Description: Wait for a training job
+Description: Suggest baseline for training job
 Parameters:
   ModelName:
     Type: String
