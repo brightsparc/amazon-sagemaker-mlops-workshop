@@ -2,6 +2,7 @@ import boto3
 import botocore
 import logging
 import json
+import os
 
 from crhelper import CfnResource
 from botocore.exceptions import ClientError
@@ -16,6 +17,7 @@ helper = CfnResource()
 # CFN Handlers
 
 def lambda_handler(event, context):
+    logger.debug(json.dumps(event))
     helper(event, context)
 
 
@@ -189,6 +191,12 @@ def get_file_name(url):
     a = urlparse(url)
     return os.path.basename(a.path)
 
+def get_contraints_uri(props):
+    return os.path.join(props["BaselineResultsUri"], 'constraints.json')
+
+def get_statistics_uri(props):
+    return os.path.join(props["BaselineResultsUri"], 'statistics.json')
+
 def get_processing_request(event, dataset_format=DatasetFormat.csv()):
     props = event['ResourceProperties']
 
@@ -279,17 +287,15 @@ def get_processing_request(event, dataset_format=DatasetFormat.csv()):
 
     # If this is an update and we have previous baseline & constraints uri add these as inputs
 
-    data = event.get('CrHelperData')
-    if event['RequestType'] == 'Update' and data != None:
+    if event['RequestType'] == 'Update':
         # Add baseline constraints
-        logger.debug('Update with constraints: %s', data['BaselineConstraintsUri'])
         env = request["Environment"]
         env['baseline_constraints'] = '/opt/ml/processing/baseline/constraints/constraints.json'
         request['ProcessingInputs'].append(
             {
                 "InputName": "constraints",
                 "S3Input": {
-                    "S3Uri": data['BaselineConstraintsUri'],
+                    "S3Uri": get_contraints_uri(event['OldResourceProperties']),
                     "LocalPath": "/opt/ml/processing/baseline/constraints",
                     "S3DataType": "S3Prefix",
                     "S3InputMode": "File",
@@ -298,13 +304,12 @@ def get_processing_request(event, dataset_format=DatasetFormat.csv()):
                 }
             })
         # Add baseline statistics
-        logger.debug('Update with statistics: %s', data['BaselineStatisticsUri'])
         env['baseline_statistics'] = '/opt/ml/processing/baseline/stats/statistics.json'
         request['ProcessingInputs'].append(
             {
                 "InputName": "baseline",
                 "S3Input": {
-                    "S3Uri": data['BaselineStatisticsUri'],
+                    "S3Uri": get_statistics_uri(event['OldResourceProperties']),
                     "LocalPath": "/opt/ml/processing/baseline/stats",
                     "S3DataType": "S3Prefix",
                     "S3InputMode": "File",
@@ -315,7 +320,4 @@ def get_processing_request(event, dataset_format=DatasetFormat.csv()):
 
     # Build the constraints and statistics URI from the results URI
 
-    constraints_uri = props["BaselineResultsUri"] + '/constraints.json'
-    statistics_uri = props["BaselineResultsUri"] + '/statistics.json'
-
-    return request, constraints_uri, statistics_uri
+    return request, get_contraints_uri(props), get_statistics_uri(props)
