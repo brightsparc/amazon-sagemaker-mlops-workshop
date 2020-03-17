@@ -97,11 +97,13 @@ Resources:
                       response = sm.create_experiment(**experiment)
                       print('created exp', response)
                   except Exception as e:
+                      print('error creating exp', e)
                       pass
                   try:
                       response = sm.create_trial(**trial)
                       print('created trial', response)
                   except Exception as e:
+                      print('error creating trial', e)
                       pass
 
                   print('Start training job %s' % (trainingJob['TrainingJobName']))      

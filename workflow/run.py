@@ -31,7 +31,7 @@ def name_from_base(base, max_length=63, short=False):
     trimmed_base = base[: max_length - len(timestamp) - 1]
     return "{}-{}".format(trimmed_base, timestamp)
     
-def get_training_request(model_name, job_id, role, image_uri, input_data, hyperparameters, output_uri):
+def get_training_request(model_name, job_id, data_revision, role, image_uri, input_data, hyperparameters, output_uri):
     return {
         "TrainingJobName": name_from_base('mlops-{}'.format(job_id), short=True),
         "RoleArn": role,
@@ -61,26 +61,24 @@ def get_training_request(model_name, job_id, role, image_uri, input_data, hyperp
             "MaxRuntimeInSeconds": 360000,
         },
         "ExperimentConfig": {   
-            "ExperimentName": model_name,
+            "ExperimentName": data_revision,
             "TrialName": job_id,
             "TrialComponentDisplayName": 'Training'
         },
         "Tags": [] # This is required
     }
 
-def get_experiment(model_name):
+def get_experiment(model_name, data_revision):
     return {
-        "ExperimentName": model_name,
-        "DisplayName": "Training",
-        "Description": "Training for {}".format(model_name),
+        "ExperimentName": data_revision,  
+        "DisplayName": "Training for {}".format(model_name),
     }
 
 def get_trial(model_name, job_id):
     return {
         "TrialName": job_id,
+        "DisplayName": "Training for {}".format(model_name),
         "ExperimentName": model_name,
-        "DisplayName": "Training",
-        "Description": "Training for {}".format(model_name),
     }
 
 def get_suggest_baseline(model_name, job_id, role, baseline_uri):
@@ -113,14 +111,31 @@ def get_prd_params(model_name, job_id, role, image_uri,
     return {
         "Parameters": dict(dev_params, **prod_params)
     }
-    
-def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output_dir):
+
+def get_pipeline_id_and_revisions(pipeline_name):
     # Get pipeline execution id
     codepipeline = boto3.client('codepipeline')
     response = codepipeline.get_pipeline_state(name=pipeline_name)
-    job_id = response['stageStates'][0]['latestExecution']['pipelineExecutionId']
+    ids = {
+        'job_id': response['stageStates'][0]['latestExecution']['pipelineExecutionId']
+    }
+    for stage in response['stageStates']:
+        if stage['stageName'] == 'Source':
+            for action in stage['actionStates']:
+                if action['actionName'] == 'GitSource':
+                    ids['git_revision'] = action['currentRevision']['revisionId']
+                elif action['actionName'] == 'EcrSource':
+                    ids['ecr_revision'] = action['currentRevision']['revisionId']
+                elif action['actionName'] == 'DataSource':
+                    ids['data_revision'] = action['currentRevision']['revisionId']
+    return ids
 
-    print('job id: {}'.format(job_id))
+def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output_dir):
+    # Get the job id and source revisions
+    ids = get_pipeline_id_and_revisions(pipeline_name)
+    job_id = ids['job_id']
+    data_revision = ids['data_revision']
+    print('job id: {}, data revision: {}'.format(job_id, data_revision))
     output_uri = 's3://{0}/{1}'.format(data_bucket, model_name)
     
     # Load the image uri and input data config
@@ -148,7 +163,7 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
 
     # Write experiment and trial config
     with open(os.path.join(output_dir, 'experiment.json'), 'w') as f:
-        config = get_experiment(model_name)
+        config = get_experiment(model_name, data_revision)
         json.dump(config, f)
     with open(os.path.join(output_dir, 'trial.json'), 'w') as f:
         config = get_trial(model_name, job_id)
@@ -156,7 +171,7 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
                 
     # Write the training request
     with open(os.path.join(output_dir, 'trainingjob.json'), 'w') as f:
-        request = get_training_request(model_name, job_id, role, image_uri, 
+        request = get_training_request(model_name, job_id, data_revision, role, image_uri, 
                                        input_data, hyperparameters, output_uri)
         json.dump(request, f)
 
