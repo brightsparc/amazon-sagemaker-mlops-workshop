@@ -218,35 +218,35 @@ Resources:
                 StackName: !Sub ${AWS::StackName}-custom-resource
                 TemplatePath: BuildOutput::template-custom-resource.yml
               RunOrder: 2
-        -
-          Name: Baseline
-          Actions:
-            -
-              Name: SuggestBaseline
-              InputArtifacts:
-                - Name: BuildOutput
-              ActionTypeId:
-                Category: Deploy
-                Owner: AWS
-                Version: 1
-                Provider: CloudFormation
-              Configuration:
-                ActionMode: REPLACE_ON_FAILURE
-                RoleArn: !Ref MLOpsRoleArn
-                StackName: !Sub ${AWS::StackName}-suggest-baseline
-                TemplateConfiguration: BuildOutput::suggest-baseline.json
-                TemplatePath: BuildOutput::suggest-baseline.yml
-              RunOrder: 1
-            -
-              Name: ApproveBaseline
-              ActionTypeId:
-                Category: Approval
-                Owner: AWS
-                Version: 1
-                Provider: Manual
-              Configuration:
-                CustomData: 'Are you happy to proceed with training?'
-              RunOrder: 2
+        # -
+        #   Name: Baseline
+        #   Actions:
+        #     -
+        #       Name: SuggestBaseline
+        #       InputArtifacts:
+        #         - Name: BuildOutput
+        #       ActionTypeId:
+        #         Category: Deploy
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: CloudFormation
+        #       Configuration:
+        #         ActionMode: REPLACE_ON_FAILURE
+        #         RoleArn: !Ref MLOpsRoleArn
+        #         StackName: !Sub ${AWS::StackName}-suggest-baseline
+        #         TemplateConfiguration: BuildOutput::suggest-baseline.json
+        #         TemplatePath: BuildOutput::suggest-baseline.yml
+        #       RunOrder: 1
+        #     -
+        #       Name: ApproveBaseline
+        #       ActionTypeId:
+        #         Category: Approval
+        #         Owner: AWS
+        #         Version: 1
+        #         Provider: Manual
+        #       Configuration:
+        #         CustomData: 'Are you happy to proceed with training?'
+        #       RunOrder: 2
         -
           Name: Train
           Actions:
@@ -279,16 +279,16 @@ Resources:
                 TemplateConfiguration: BuildOutput::training-job.json
                 TemplatePath: BuildOutput::wait-training-job.yml
               RunOrder: 2
-            -
-              Name: ApproveTrain
-              ActionTypeId:
-                Category: Approval
-                Owner: AWS
-                Version: 1
-                Provider: Manual
-              Configuration:
-                CustomData: 'Does this training job look good'
-              RunOrder: 3
+            # -
+            #   Name: ApproveTrain
+            #   ActionTypeId:
+            #     Category: Approval
+            #     Owner: AWS
+            #     Version: 1
+            #     Provider: Manual
+            #   Configuration:
+            #     CustomData: 'Does this training job look good'
+            #   RunOrder: 3
         -
           Name: DeployDev
           Actions:
@@ -342,97 +342,97 @@ Resources:
                 TemplatePath: BuildOutput::template-model-prd.yml
               RunOrder: 1
 
-  MLOpsJobMonitor:
-    Type: "AWS::Lambda::Function"
-    Properties: 
-      FunctionName: !Sub ${AWS::StackName}-mlops-monitor
-      Handler: index.lambda_handler
-      Runtime: python3.7
-      MemorySize: 512
-      Role: !Ref MLOpsRoleArn
-      Runtime: python3.6
-      Timeout: 60
-      Code: 
-        ZipFile: !Sub |
-          import boto3
-          import json
-          codepipeline = boto3.client('codepipeline')
-          def lambda_handler(event, context):
-            print('event', json.dumps(event))
-            if event['detail']['type']['category'] != "Approval":
-              return "Not approval"
-            # Define stage and action name
-            stage_name = event['detail']['stage']
-            action_name = event['detail']['action']
-            status = event['detail']['state']
-            print('stage: {} action: {} status: {}'.format(stage_name, action_name, status))
-            # The pipeline will be the same name step function workflow
-            pipeline_name = '${AWS::StackName}'
-            response = codepipeline.get_pipeline_state( name=pipeline_name )
-            print('get_pipeline_state', response)
-            token = None
-            for stageState in response['stageStates']:
-              if stageState['stageName'] == stage_name:
-                for actionState in stageState['actionStates']:
-                  if actionState['actionName'] == action_name:
-                    if not 'latestExecution' in actionState:
-                      raise(Exception("Approval not available"))
-                    else:
-                      latestExecution = actionState['latestExecution']
-                      if latestExecution['status'] != 'InProgress':
-                        raise(Exception("Approval is not awaiting for approval: %s" % latestExecution['status']))
-                      token = latestExecution['token']
-            if token is None:
-              raise(Exception("No token found"))
-            # TODO: If Stage Baseline, automatically approve when Complete without viloations
-            # TODO: If Stage Train, automatically approve when no rule violoations
-            # TODO: Check service status
-            if status == 'STARTED':
-              result={
-                  'summary': 'Job succesful',
-                  'status': 'Approved'
-                }
-            else:
-              result={
-                'summary': 'Workflow unsuccesful with status: {}'.format(status),
-                'status': 'Rejected'
-              }
-            # Update approval
-            response = codepipeline.put_approval_result(
-              pipelineName=pipeline_name,
-              stageName=stage_name,
-              actionName=action_name,
-              result=result,
-              token=token
-            )
-            print('put_approval_result', response)
-            return "Done"
-      Description: "Function called when a step function workflow is complete"
+  # MLOpsJobMonitor:
+  #   Type: "AWS::Lambda::Function"
+  #   Properties: 
+  #     FunctionName: !Sub ${AWS::StackName}-mlops-monitor
+  #     Handler: index.lambda_handler
+  #     Runtime: python3.7
+  #     MemorySize: 512
+  #     Role: !Ref MLOpsRoleArn
+  #     Runtime: python3.6
+  #     Timeout: 60
+  #     Code: 
+  #       ZipFile: !Sub |
+  #         import boto3
+  #         import json
+  #         codepipeline = boto3.client('codepipeline')
+  #         def lambda_handler(event, context):
+  #           print('event', json.dumps(event))
+  #           if event['detail']['type']['category'] != "Approval":
+  #             return "Not approval"
+  #           # Define stage and action name
+  #           stage_name = event['detail']['stage']
+  #           action_name = event['detail']['action']
+  #           status = event['detail']['state']
+  #           print('stage: {} action: {} status: {}'.format(stage_name, action_name, status))
+  #           # The pipeline will be the same name step function workflow
+  #           pipeline_name = '${AWS::StackName}'
+  #           response = codepipeline.get_pipeline_state( name=pipeline_name )
+  #           print('get_pipeline_state', response)
+  #           token = None
+  #           for stageState in response['stageStates']:
+  #             if stageState['stageName'] == stage_name:
+  #               for actionState in stageState['actionStates']:
+  #                 if actionState['actionName'] == action_name:
+  #                   if not 'latestExecution' in actionState:
+  #                     raise(Exception("Approval not available"))
+  #                   else:
+  #                     latestExecution = actionState['latestExecution']
+  #                     if latestExecution['status'] != 'InProgress':
+  #                       raise(Exception("Approval is not awaiting for approval: %s" % latestExecution['status']))
+  #                     token = latestExecution['token']
+  #           if token is None:
+  #             raise(Exception("No token found"))
+  #           # TODO: If Stage Baseline, automatically approve when Complete without viloations
+  #           # TODO: If Stage Train, automatically approve when no rule violoations
+  #           # TODO: Check service status
+  #           if status == 'STARTED':
+  #             result={
+  #                 'summary': 'Job succesful',
+  #                 'status': 'Approved'
+  #               }
+  #           else:
+  #             result={
+  #               'summary': 'Workflow unsuccesful with status: {}'.format(status),
+  #               'status': 'Rejected'
+  #             }
+  #           # Update approval
+  #           response = codepipeline.put_approval_result(
+  #             pipelineName=pipeline_name,
+  #             stageName=stage_name,
+  #             actionName=action_name,
+  #             result=result,
+  #             token=token
+  #           )
+  #           print('put_approval_result', response)
+  #           return "Done"
+  #     Description: "Function called when a step function workflow is complete"
       
-  MLOpsJobMonitorPermissions:
-    Type: "AWS::Lambda::Permission"
-    Properties: 
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref MLOpsJobMonitor
-      Principal: events.amazonaws.com
-      SourceArn: !GetAtt JobMonitoringEvent.Arn
+  # MLOpsJobMonitorPermissions:
+  #   Type: "AWS::Lambda::Permission"
+  #   Properties: 
+  #     Action: lambda:InvokeFunction
+  #     FunctionName: !Ref MLOpsJobMonitor
+  #     Principal: events.amazonaws.com
+  #     SourceArn: !GetAtt JobMonitoringEvent.Arn
 
-  JobMonitoringEvent:
-    Type: "AWS::Events::Rule"
-    Properties: 
-      Description: "Event that will be called when pipeline actions "
-      Name: !Sub ${AWS::StackName}-mlops-monitor
-      EventPattern: 
-        source: 
-          - "aws.codepipeline"
-        detail-type: 
-          - "CodePipeline Action Execution State Change"
-        detail: 
-          pipeline:
-            - !Ref DeployPipeline
-          state:
-            - "STARTED"
-      Targets:
-        - Arn: !GetAtt MLOpsJobMonitor.Arn
-          Id: !Sub ${AWS::StackName}-mlops-event
-    DependsOn: MLOpsJobMonitor
+  # JobMonitoringEvent:
+  #   Type: "AWS::Events::Rule"
+  #   Properties: 
+  #     Description: "Event that will be called when pipeline actions "
+  #     Name: !Sub ${AWS::StackName}-mlops-monitor
+  #     EventPattern: 
+  #       source: 
+  #         - "aws.codepipeline"
+  #       detail-type: 
+  #         - "CodePipeline Action Execution State Change"
+  #       detail: 
+  #         pipeline:
+  #           - !Ref DeployPipeline
+  #         state:
+  #           - "STARTED"
+  #     Targets:
+  #       - Arn: !GetAtt MLOpsJobMonitor.Arn
+  #         Id: !Sub ${AWS::StackName}-mlops-event
+  #   DependsOn: MLOpsJobMonitor

@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import boto3
+import re
 
 def sagemaker_timestamp():
     """Return a timestamp with millisecond precision."""
@@ -33,7 +34,7 @@ def name_from_base(base, max_length=63, short=False):
     
 def get_training_request(model_name, job_id, data_revision, role, image_uri, input_data, hyperparameters, output_uri):
     return {
-        "TrainingJobName": name_from_base('mlops-{}'.format(job_id), short=True),
+        "TrainingJobName": 'mlops-job-{}'.format(job_id),
         "RoleArn": role,
         "AlgorithmSpecification": {
             "TrainingImage": image_uri,
@@ -71,14 +72,13 @@ def get_training_request(model_name, job_id, data_revision, role, image_uri, inp
 def get_experiment(model_name, data_revision):
     return {
         "ExperimentName": data_revision,  
-        "DisplayName": "Training for {}".format(model_name),
+        "Description": "Training for {}".format(model_name),
     }
 
-def get_trial(model_name, job_id):
+def get_trial(data_revision, job_id):
     return {
+        "ExperimentName": data_revision,
         "TrialName": job_id,
-        "DisplayName": "Training for {}".format(model_name),
-        "ExperimentName": model_name,
     }
 
 def get_suggest_baseline(model_name, job_id, role, baseline_uri):
@@ -101,10 +101,11 @@ def get_dev_params(model_name, job_id, role, image_uri):
         }
     }
 
-def get_prd_params(model_name, job_id, role, image_uri, 
+def get_prd_params(model_name, job_id, role, image_uri, baseline_uri,
                    metric_name='feature_baseline_drift_class_predictions', metric_threshold=0.4):
     dev_params = get_dev_params(model_name, job_id, role, image_uri)['Parameters']
     prod_params = {
+        "BaselineInputUri": baseline_uri, # add baseline niput uri
         "ScheduleMetricName": metric_name, # alarm on class predictions drift
         "ScheduleMetricThreshold": str(metric_threshold) # Must serialize parameters as string
     }    
@@ -117,7 +118,7 @@ def get_pipeline_id_and_revisions(pipeline_name):
     codepipeline = boto3.client('codepipeline')
     response = codepipeline.get_pipeline_state(name=pipeline_name)
     ids = {
-        'job_id': response['stageStates'][0]['latestExecution']['pipelineExecutionId']
+        'execution_id': response['stageStates'][0]['latestExecution']['pipelineExecutionId']
     }
     for stage in response['stageStates']:
         if stage['stageName'] == 'Source':
@@ -133,8 +134,11 @@ def get_pipeline_id_and_revisions(pipeline_name):
 def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output_dir):
     # Get the job id and source revisions
     ids = get_pipeline_id_and_revisions(pipeline_name)
-    job_id = ids['job_id']
-    data_revision = ids['data_revision']
+    # Get job id based on execution id and current time so can re-run
+    prefix = 'mlops-xxx-{}-'.format(model_name)
+    job_id = name_from_base(ids['execution_id'], max_length=63-len(prefix), short=True)
+    # Strip out any non-compliants characters for data revision
+    data_revision = re.sub(r'[^a-zA-Z0-9]', "-", ids['data_revision'])    
     print('job id: {}, data revision: {}'.format(job_id, data_revision))
     output_uri = 's3://{0}/{1}'.format(data_bucket, model_name)
     
@@ -166,7 +170,7 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
         config = get_experiment(model_name, data_revision)
         json.dump(config, f)
     with open(os.path.join(output_dir, 'trial.json'), 'w') as f:
-        config = get_trial(model_name, job_id)
+        config = get_trial(data_revision, job_id)
         json.dump(config, f)
                 
     # Write the training request
@@ -175,17 +179,17 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
                                        input_data, hyperparameters, output_uri)
         json.dump(request, f)
 
-    # Write the baseline params for CFN
-    with open(os.path.join(output_dir, 'suggest-baseline.json'), 'w') as f:
-        params = get_suggest_baseline(model_name, job_id, role, baseline_uri)
-        json.dump(params, f)        
+    # # Write the baseline params for CFN
+    # with open(os.path.join(output_dir, 'suggest-baseline.json'), 'w') as f:
+    #     params = get_suggest_baseline(model_name, job_id, role, baseline_uri)
+    #     json.dump(params, f)
 
     # Write the dev & prod params for CFN
     with open(os.path.join(output_dir, 'deploy-model-dev.json'), 'w') as f:
         params = get_dev_params(model_name, job_id, role, image_uri)
         json.dump(request, f)        
     with open(os.path.join(output_dir, 'template-model-prd.json'), 'w') as f:
-        params = get_prd_params(model_name, job_id, role, image_uri)
+        params = get_prd_params(model_name, job_id, role, image_uri, baseline_uri)
         json.dump(params, f)        
         
 if __name__ == "__main__":
