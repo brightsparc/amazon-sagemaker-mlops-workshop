@@ -122,10 +122,11 @@ def get_suggest_baseline(model_name, job_id, role, baseline_uri):
 def get_dev_params(model_name, job_id, role, image_uri):
     return {
         "Parameters": {
+            "ImageRepoUri": image_uri,
             "ModelName": model_name,
             "TrainJobId": job_id,
             "MLOpsRoleArn": role,
-            "ImageRepoUri": image_uri,
+            "VariantName": "DevTraffic",
         }
     }
 
@@ -133,6 +134,7 @@ def get_prd_params(model_name, job_id, role, image_uri,
                    metric_name='feature_baseline_drift_class_predictions', metric_threshold=0.4):
     dev_params = get_dev_params(model_name, job_id, role, image_uri)['Parameters']
     prod_params = {
+        "VariantName": "PrdTraffic",
         "ScheduleMetricName": metric_name, # alarm on class predictions drift
         "ScheduleMetricThreshold": str(metric_threshold) # Must serialize parameters as string
     }    

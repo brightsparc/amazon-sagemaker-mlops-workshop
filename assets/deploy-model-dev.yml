@@ -15,6 +15,9 @@ Parameters:
   MLOpsRoleArn:
     Type: String
     Description: The MLOps role
+  VariantName:
+    Type: String
+    Description: Name of the endpoint variant
 
 Resources:
 
@@ -35,7 +38,7 @@ Resources:
         InitialVariantWeight: 1.0
         InstanceType: ml.t2.large
         ModelName: !GetAtt Model.ModelName
-        VariantName: AllTraffic
+        VariantName: !Ref VariantName
       EndpointConfigName: !Sub mlops-${ModelName}-dec-${TrainJobId}
       Tags:
         - Key: Name

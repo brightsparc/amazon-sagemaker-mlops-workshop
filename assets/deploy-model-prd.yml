@@ -15,6 +15,9 @@ Parameters:
   MLOpsRoleArn:
     Type: String
     Description: The role for executing the monitoring schedule
+  VariantName:
+    Type: String
+    Description: Name of the endpoint variant
   ScheduleMetricName:
     Type: String
     Description: The metric to alarm on for schedule
@@ -41,7 +44,7 @@ Resources:
         InitialVariantWeight: 1.0
         InstanceType: ml.c5.large
         ModelName: !GetAtt Model.ModelName
-        VariantName: AllTraffic
+        VariantName: !Ref VariantName
       EndpointConfigName: !Sub mlops-${ModelName}-pec-${TrainJobId}
       Tags:
         - Key: Name
@@ -63,7 +66,7 @@ Resources:
       ServiceToken: 
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-enable-data-capture'
       EndpointName: !GetAtt Endpoint.EndpointName
-      VariantName: AllTraffic
+      VariantName: !Ref VariantName
       EndpointConfigName: !Sub mlops-${ModelName}-pdc-${TrainJobId}
       DataCaptureUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/datacapture
     DependsOn: Endpoint
@@ -284,7 +287,7 @@ Resources:
     Properties:
       MaxCapacity: 10
       MinCapacity: 2
-      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/AllTraffic
+      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/${VariantName}
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
@@ -295,7 +298,7 @@ Resources:
     Properties: 
       PolicyName: SageMakerVariantInvocationsPerInstance
       PolicyType: TargetTrackingScaling
-      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/AllTraffic
+      ResourceId: !Sub endpoint/mlops-${ModelName}-prd-${TrainJobId}/variant/${VariantName}
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
       TargetTrackingScalingPolicyConfiguration:
