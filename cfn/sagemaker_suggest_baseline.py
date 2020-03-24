@@ -32,7 +32,6 @@ def delete_handler(event, context):
     """
     Processing Jobs like Training Jobs can not be deleted only stopped if running.
     """
-    pass
     processing_job_name = get_processing_job_name(event)
     stop_processing_job(processing_job_name)
 
@@ -50,8 +49,7 @@ def poll_create(event, context):
 @helper.poll_delete
 def poll_delete(event, context):
     """
-    Return true if the resource has been stopped.  We could ommit this callback
-    to make the delete the experience faster.
+    Return true if the resource has been stopped.  
     """
     processing_job_name = get_processing_job_name(event)
     logger.info('Polling for stopped processing job: %s', processing_job_name)

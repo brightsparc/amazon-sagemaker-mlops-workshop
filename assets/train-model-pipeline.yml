@@ -55,10 +55,10 @@ Resources:
         BuildSpec: workflow/buildspec.yml
       TimeoutInMinutes: 30
     
-  MLOpsLaunchJob:
+  CreateExperiment:
     Type: "AWS::Lambda::Function"
     Properties: 
-      FunctionName: !Sub ${AWS::StackName}-job-launcher
+      FunctionName: !Sub ${AWS::StackName}-create-experiment
       Handler: index.lambda_handler
       MemorySize: 512
       Role: !Ref MLOpsRoleArn 
@@ -78,7 +78,8 @@ Resources:
           def lambda_handler(event, context):
               print('event', json.dumps(event))
               jobId = event["CodePipeline.job"]["id"]
-              trainingJob = None
+              experiment = None
+              trial = None
 
               try:
                   for inputArtifacts in event["CodePipeline.job"]["data"]["inputArtifacts"]:
@@ -86,29 +87,23 @@ Resources:
                           s3Location = inputArtifacts['location']['s3Location']
                           zip_bytes = s3.get_object(Bucket=s3Location['bucketName'], Key=s3Location['objectKey'])['Body'].read()
                           with zipfile.ZipFile(io.BytesIO(zip_bytes), "r") as z:
-                            trainingJob = json.loads(z.read('trainingjob.json').decode('utf-8'))
                             experiment = json.loads(z.read('experiment.json').decode('utf-8'))
                             trial = json.loads(z.read('trial.json').decode('utf-8'))
 
-                  if trainingJob is None:
-                    raise(Exception("training.json wasn't found"))
+                  if experiment is None or trial is None:
+                    raise(Exception("Experiment and Trail config not found"))
 
                   try:
                       response = sm.create_experiment(**experiment)
                       print('created exp', response)
                   except Exception as e:
                       print('error creating exp', e)
-                      pass
                   try:
                       response = sm.create_trial(**trial)
                       print('created trial', response)
                   except Exception as e:
                       print('error creating trial', e)
-                      pass
 
-                  print('Start training job %s' % (trainingJob['TrainingJobName']))      
-                  sm.create_training_job(**trainingJob)
- 
                   # and update codepipeline
                   codepipeline.put_job_success_result(jobId=jobId)
               except Exception as e:
@@ -123,7 +118,7 @@ Resources:
                   )
               return 'Done'
 
-      Description: "Function that will start a new Sagemaker Training Job"
+      Description: "Function that creates an experiment and trial"
       Tags:
         - Key: Name
           Value: !Sub mlops-launch-job-${ModelName}
@@ -218,40 +213,11 @@ Resources:
                 StackName: !Sub ${AWS::StackName}-custom-resource
                 TemplatePath: BuildOutput::template-custom-resource.yml
               RunOrder: 2
-        # -
-        #   Name: Baseline
-        #   Actions:
-        #     -
-        #       Name: SuggestBaseline
-        #       InputArtifacts:
-        #         - Name: BuildOutput
-        #       ActionTypeId:
-        #         Category: Deploy
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: CloudFormation
-        #       Configuration:
-        #         ActionMode: REPLACE_ON_FAILURE
-        #         RoleArn: !Ref MLOpsRoleArn
-        #         StackName: !Sub ${AWS::StackName}-suggest-baseline
-        #         TemplateConfiguration: BuildOutput::suggest-baseline.json
-        #         TemplatePath: BuildOutput::suggest-baseline.yml
-        #       RunOrder: 1
-        #     -
-        #       Name: ApproveBaseline
-        #       ActionTypeId:
-        #         Category: Approval
-        #         Owner: AWS
-        #         Version: 1
-        #         Provider: Manual
-        #       Configuration:
-        #         CustomData: 'Are you happy to proceed with training?'
-        #       RunOrder: 2
         -
           Name: Train
           Actions:
             -
-              Name: TrainModel
+              Name: CreateExperiment
               InputArtifacts:
                 - Name: BuildOutput
               ActionTypeId:
@@ -260,11 +226,11 @@ Resources:
                 Version: 1
                 Provider: Lambda
               Configuration:
-                  FunctionName: !Ref MLOpsLaunchJob
+                  FunctionName: !Ref CreateExperiment
                   UserParameters: !Sub mlops-pipeline-${ModelName}
               RunOrder: 1
             - 
-              Name: WaitForTraining
+              Name: TrainModel
               InputArtifacts:
                 - Name: BuildOutput
               ActionTypeId:
@@ -275,19 +241,35 @@ Resources:
               Configuration:
                 ActionMode: REPLACE_ON_FAILURE
                 RoleArn: !Ref MLOpsRoleArn
-                StackName: !Sub ${AWS::StackName}-wait-training-job
+                StackName: !Sub ${AWS::StackName}-training-job
                 TemplateConfiguration: BuildOutput::training-job.json
-                TemplatePath: BuildOutput::wait-training-job.yml
+                TemplatePath: BuildOutput::training-job.yml
+              RunOrder: 2
+            -
+              Name: SuggestBaseline
+              InputArtifacts:
+                - Name: BuildOutput
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: CloudFormation
+              Configuration:
+                ActionMode: REPLACE_ON_FAILURE
+                RoleArn: !Ref MLOpsRoleArn
+                StackName: !Sub ${AWS::StackName}-suggest-baseline
+                TemplateConfiguration: BuildOutput::suggest-baseline.json
+                TemplatePath: BuildOutput::suggest-baseline.yml
               RunOrder: 2
             # -
-            #   Name: ApproveTrain
+            #   Name: ApproveBaseline
             #   ActionTypeId:
             #     Category: Approval
             #     Owner: AWS
             #     Version: 1
             #     Provider: Manual
             #   Configuration:
-            #     CustomData: 'Does this training job look good'
+            #     CustomData: 'Are you happy to proceed with training baseline?'
             #   RunOrder: 3
         -
           Name: DeployDev

@@ -4,7 +4,6 @@ import os
 import sys
 import time
 import boto3
-import re
 
 def sagemaker_timestamp():
     """Return a timestamp with millisecond precision."""
@@ -32,9 +31,10 @@ def name_from_base(base, max_length=63, short=False):
     trimmed_base = base[: max_length - len(timestamp) - 1]
     return "{}-{}".format(trimmed_base, timestamp)
     
-def get_training_request(model_name, job_id, data_revision, role, image_uri, input_data, hyperparameters, output_uri):
-    return {
-        "TrainingJobName": 'mlops-job-{}'.format(job_id),
+def get_training_params(model_name, job_id, role, image_uri, 
+                        training_uri, validation_uri, hyperparameters, output_uri):
+    # Return request params without name/experiment config
+    request = {
         "RoleArn": role,
         "AlgorithmSpecification": {
             "TrainingImage": image_uri,
@@ -48,7 +48,32 @@ def get_training_request(model_name, job_id, data_revision, role, image_uri, inp
                 {'Name':'test:accuracy', 'Regex':'test accuracy: (.*?)%;'}
             ]
         },
-        "InputDataConfig": input_data,
+        "InputDataConfig": [
+            {
+                "ChannelName": "training",
+                "DataSource": {
+                    "S3DataSource": {
+                        "S3DataType": "S3Prefix",
+                        "S3Uri": training_uri,
+                        "S3DataDistributionType": "FullyReplicated"
+                    }
+                },
+                "ContentType": "text/csv",
+                "CompressionType": "None"
+            },
+            {
+                "ChannelName": "validation",
+                "DataSource": {
+                    "S3DataSource": {
+                        "S3DataType": "S3Prefix",
+                        "S3Uri": validation_uri,
+                        "S3DataDistributionType": "FullyReplicated"
+                    }
+                },
+                "ContentType": "text/csv",
+                "CompressionType": "None"
+            }
+        ],
         "HyperParameters": hyperparameters,
         "OutputDataConfig": {
             "S3OutputPath": output_uri
@@ -61,23 +86,26 @@ def get_training_request(model_name, job_id, data_revision, role, image_uri, inp
         "StoppingCondition": {
             "MaxRuntimeInSeconds": 360000,
         },
-        "ExperimentConfig": {   
-            "ExperimentName": data_revision,
-            "TrialName": job_id,
-            "TrialComponentDisplayName": 'Training'
-        },
-        "Tags": [] # This is required
+        "Tags": [],
     }
 
-def get_experiment(model_name, data_revision):
     return {
-        "ExperimentName": data_revision,  
-        "Description": "Training for {}".format(model_name),
+        "Parameters": {
+            "ModelName": model_name,
+            "TrainJobId": job_id,
+            "TrainJobRequest": json.dumps(request),
+        }
     }
 
-def get_trial(data_revision, job_id):
+
+def get_experiment(model_name):
     return {
-        "ExperimentName": data_revision,
+        "ExperimentName": model_name,
+    }
+
+def get_trial(model_name, job_id):
+    return {
+        "ExperimentName": model_name,
         "TrialName": job_id,
     }
 
@@ -101,11 +129,10 @@ def get_dev_params(model_name, job_id, role, image_uri):
         }
     }
 
-def get_prd_params(model_name, job_id, role, image_uri, baseline_uri,
+def get_prd_params(model_name, job_id, role, image_uri,
                    metric_name='feature_baseline_drift_class_predictions', metric_threshold=0.4):
     dev_params = get_dev_params(model_name, job_id, role, image_uri)['Parameters']
     prod_params = {
-        "BaselineInputUri": baseline_uri, # add baseline niput uri
         "ScheduleMetricName": metric_name, # alarm on class predictions drift
         "ScheduleMetricThreshold": str(metric_threshold) # Must serialize parameters as string
     }    
@@ -113,33 +140,16 @@ def get_prd_params(model_name, job_id, role, image_uri, baseline_uri,
         "Parameters": dict(dev_params, **prod_params)
     }
 
-def get_pipeline_id_and_revisions(pipeline_name):
+def get_pipeline_id(pipeline_name):
     # Get pipeline execution id
     codepipeline = boto3.client('codepipeline')
     response = codepipeline.get_pipeline_state(name=pipeline_name)
-    ids = {
-        'execution_id': response['stageStates'][0]['latestExecution']['pipelineExecutionId']
-    }
-    for stage in response['stageStates']:
-        if stage['stageName'] == 'Source':
-            for action in stage['actionStates']:
-                if action['actionName'] == 'GitSource':
-                    ids['git_revision'] = action['currentRevision']['revisionId']
-                elif action['actionName'] == 'EcrSource':
-                    ids['ecr_revision'] = action['currentRevision']['revisionId']
-                elif action['actionName'] == 'DataSource':
-                    ids['data_revision'] = action['currentRevision']['revisionId']
-    return ids
+    return response['stageStates'][0]['latestExecution']['pipelineExecutionId']
 
 def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output_dir):
     # Get the job id and source revisions
-    ids = get_pipeline_id_and_revisions(pipeline_name)
-    # Get job id based on execution id and current time so can re-run
-    prefix = 'mlops-xxx-{}-'.format(model_name)
-    job_id = name_from_base(ids['execution_id'], max_length=63-len(prefix), short=True)
-    # Strip out any non-compliants characters for data revision
-    data_revision = re.sub(r'[^a-zA-Z0-9]', "-", ids['data_revision'])    
-    print('job id: {}, data revision: {}'.format(job_id, data_revision))
+    job_id = get_pipeline_id(pipeline_name)
+    print('job id: {}'.format(job_id))
     output_uri = 's3://{0}/{1}'.format(data_bucket, model_name)
     
     # Load the image uri and input data config
@@ -149,10 +159,11 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
         
     with open(os.path.join(data_dir, 'inputData.json'), 'r') as f:
         input_data = json.load(f)
-        print('input data: {}'.format(input_data))
-
-    # TODO: Get the 'baseline' input data in future
-    baseline_uri = input_data[0]['DataSource']['S3DataSource']['S3Uri']
+        training_uri = input_data['TrainingUri']
+        validation_uri = input_data['ValidationUri']
+        baseline_uri = input_data['BaselineUri']
+        print('training uri: {}\nvalidation uri: {}\n baseline uri: {}'.format(
+            training_uri, validation_uri, baseline_uri))
 
     hyperparameters = {}
     if os.path.exists(os.path.join(data_dir, 'hyperparameters.json')):
@@ -167,29 +178,30 @@ def main(pipeline_name, model_name, role, data_bucket, ecr_dir, data_dir, output
 
     # Write experiment and trial config
     with open(os.path.join(output_dir, 'experiment.json'), 'w') as f:
-        config = get_experiment(model_name, data_revision)
+        config = get_experiment(model_name)
         json.dump(config, f)
     with open(os.path.join(output_dir, 'trial.json'), 'w') as f:
-        config = get_trial(data_revision, job_id)
+        config = get_trial(model_name, job_id)
         json.dump(config, f)
                 
     # Write the training request
-    with open(os.path.join(output_dir, 'trainingjob.json'), 'w') as f:
-        request = get_training_request(model_name, job_id, data_revision, role, image_uri, 
-                                       input_data, hyperparameters, output_uri)
-        json.dump(request, f)
+    with open(os.path.join(output_dir, 'training-job.json'), 'w') as f:
+        params = get_training_params(model_name, job_id, role, image_uri, 
+                                    training_uri, validation_uri, 
+                                    hyperparameters, output_uri)
+        json.dump(params, f)
 
-    # # Write the baseline params for CFN
-    # with open(os.path.join(output_dir, 'suggest-baseline.json'), 'w') as f:
-    #     params = get_suggest_baseline(model_name, job_id, role, baseline_uri)
-    #     json.dump(params, f)
+    # Write the baseline params for CFN
+    with open(os.path.join(output_dir, 'suggest-baseline.json'), 'w') as f:
+        params = get_suggest_baseline(model_name, job_id, role, baseline_uri)
+        json.dump(params, f)
 
     # Write the dev & prod params for CFN
     with open(os.path.join(output_dir, 'deploy-model-dev.json'), 'w') as f:
         params = get_dev_params(model_name, job_id, role, image_uri)
-        json.dump(request, f)        
+        json.dump(params, f)        
     with open(os.path.join(output_dir, 'template-model-prd.json'), 'w') as f:
-        params = get_prd_params(model_name, job_id, role, image_uri, baseline_uri)
+        params = get_prd_params(model_name, job_id, role, image_uri)
         json.dump(params, f)        
         
 if __name__ == "__main__":

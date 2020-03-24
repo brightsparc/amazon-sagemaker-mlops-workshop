@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "mlops1-text-multiclass-deploy-prd"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-1oij1gwxbc4jd"
+s3_prefix = "mlops1-text-multiclass-deploy-prd"
+region = "ap-southeast-2"
+confirm_changeset = true
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "ImageRepoName=\"mlops1-ludwig-model\" ImageTagName=\"latest\" ModelName=\"text-multiclass\" TrainJobId=\"26c74986-0685-4438-9ea3-48c32951da98\" TrainSha256=\"b267126c4bab61406405ed6e3e645d24e6909debb39c68f837f6fb961d22f1cd\" DataCaptureUri=\"s3://sagemaker-ap-southeast-2-691313291965/text-multiclass/datacapture\" MonitoringRoleArn=\"arn:aws:iam::691313291965:role/mlops1-MLOps\" BaselineInputUri=\"s3://sagemaker-ap-southeast-2-691313291965/output/data/predictions.csv\" BaselineResultsUri=\"s3://sagemaker-ap-southeast-2-691313291965/text-multiclass/baselining/results\t\" ScheduleReportsUri=\"s3://sagemaker-ap-southeast-2-691313291965/text-multiclass/monitoring/reports\" ScheduleMetricName=\"feature_baseline_drift_class_predictions\" ScheduleMetricThreshold=\"0.4\""

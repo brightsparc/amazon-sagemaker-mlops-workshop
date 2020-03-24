@@ -15,9 +15,6 @@ Parameters:
   MLOpsRoleArn:
     Type: String
     Description: The role for executing the monitoring schedule
-  BaselineInputUri:
-    Type: String
-    Description: The s3 uri for baseline input
   ScheduleMetricName:
     Type: String
     Description: The metric to alarm on for schedule
@@ -213,16 +210,6 @@ Resources:
           DATA_CAPTURE_URI: !GetAtt SagemakerDataCapture.DataCaptureEndpointUri
       Description: "Perform checks post-shifting traffic to lambda"
 
-  SagemakerSuggestBaseline:
-    Type: Custom::SuggestBaseline
-    Properties:
-      ServiceToken:
-        !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-suggest-baseline'
-      ProcessingJobName: !Sub mlops-${ModelName}-pbl-${TrainJobId}
-      BaselineInputUri: !Ref BaselineInputUri
-      BaselineResultsUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/baseline/mlops-${ModelName}-pbl-${TrainJobId}
-      PassRoleArn: !Ref MLOpsRoleArn
-
   SagemakerMonitoringSchedule:
     Type: Custom::MonitoringSchedule
     Properties:
@@ -230,8 +217,8 @@ Resources:
         !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:sagemaker-cfn-monitoring-schedule'
       EndpointName: !GetAtt Endpoint.EndpointName
       ScheduleName: !Sub mlops-${ModelName}-pms-${TrainJobId}
-      BaselineConstraintsUri: !GetAtt SagemakerSuggestBaseline.BaselineConstraintsUri
-      BaselineStatisticsUri: !GetAtt SagemakerSuggestBaseline.BaselineStatisticsUri
+      BaselineConstraintsUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/baseline/mlops-${ModelName}-pbl-${TrainJobId}/constraints.json
+      BaselineStatisticsUri: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/baseline/mlops-${ModelName}-pbl-${TrainJobId}/statistics.json
       OutputS3URI: !Sub s3://sagemaker-${AWS::Region}-${AWS::AccountId}/${ModelName}/monitoring/reports
       PassRoleArn: !Ref MLOpsRoleArn
     DependsOn: SagemakerDataCapture # Wait until endpoint is update for data capture
@@ -301,7 +288,7 @@ Resources:
       RoleARN: !Sub arn:aws:iam::${AWS::AccountId}:role/MLOps
       ScalableDimension: sagemaker:variant:DesiredInstanceCount
       ServiceNamespace: sagemaker
-    DependsOn: ApiFunction 
+    DependsOn: SagemakerDataCapture 
 
   AutoScalingPolicy:
     Type: "AWS::ApplicationAutoScaling::ScalingPolicy"

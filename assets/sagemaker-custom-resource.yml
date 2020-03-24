@@ -31,15 +31,15 @@ Resources:
       Role: !GetAtt SagemakerCustomResourceRole.Arn
       Description: "Creates a SageMaker Monitoring Schedule for a given Endpoint"
 
-  TrainingWaiterFunction:
+  TrainingJobFunction:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: sagemaker-cfn-training-job-waiter
+      FunctionName: sagemaker-cfn-training-job
       CodeUri: ../cfn
-      Handler: sagemaker_training_waiter.lambda_handler
+      Handler: sagemaker_training_job.lambda_handler
       Runtime: python3.7
       Role: !GetAtt SagemakerCustomResourceRole.Arn
-      Description: "Waits for a SageMaker Training Job to complete"
+      Description: "Creates a SageMaker Training Job for a given request"
       
   SagemakerCustomResourceRole:
     Type: AWS::IAM::Role
@@ -63,7 +63,9 @@ Resources:
                 Sid: AllowSageMaker
                 Effect: Allow
                 Action:
+                  - sagemaker:CreateTrainingJob
                   - sagemaker:DescribeTrainingJob
+                  - sagemaker:StopTrainingJob
                   - sagemaker:DescribeEndpoint
                   - sagemaker:UpdateEndpoint
                   - sagemaker:CreateEndpointConfig
